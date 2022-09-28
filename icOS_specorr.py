@@ -14,7 +14,7 @@ from scipy.optimize import curve_fit # I don't know why but that one function re
 import scipy.signal 
 import seaborn as sns    #Visually distinct color palette 
 import numpy as np
-from sklearn.linear_model import LinearRegression
+# from sklearn.linear_model import LinearRegression
 import scipy.sparse as sparse
 from statistics import mean
 import math as mth
