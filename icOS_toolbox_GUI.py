@@ -113,6 +113,7 @@ def baselinefitcorr_3seg_smooth(df,  segment1, segment2, segmentend, sigmaby3seg
     x=df.wl[segmentend].copy()
     y=df.A[segmentend].copy()
     segment=segment1+segment2+segmentend
+    tmp=df.copy()
     x=tmp.wl[segment].copy()
     y=tmp.A[segment].copy()
     initialParameters = np.array([1e9,1])
