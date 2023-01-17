@@ -1,8 +1,4 @@
-# GitHub README
-
-*ic*OS lab UV-visible spectroscopy toolbox
-
-Installation
+# *ic*OS lab UV-visible spectroscopy toolbox
 
 ## Installation
 
