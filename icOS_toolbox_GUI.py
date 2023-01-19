@@ -14,9 +14,9 @@ import os as osys
 import math as mth
 import seaborn as sns
 import numpy as np
+import scipy as sp
 from statistics import mean
 plt.rcParams["figure.figsize"] = (20/2.54,15/2.54)
-import scipy as sp
 # dev_nUV=1
 # dev_nopeak=0.1
 # dev_nIR=0.5
@@ -232,15 +232,18 @@ def constant_baseline_correction():
     segmentend=raw_spec[next(iter(raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
     for i in raw_spec:
         tmp=baselineconst(raw_spec[i],segmentend)
+        tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
+                                       window_length=21,
+                                       polyorder=3)
         constant_spec[i]=rescale_corrected(tmp, scaling_top-10, scaling_top+10)
         raw_spec[i].index=raw_spec[i].wl
     listmax=[]
     listmin=[]
     for i in constant_spec :
-        a=constant_spec[i].A[constant_spec[i].wl.between(200,300)].max()
+        a=constant_spec[i].A[constant_spec[i].wl.between(300,850)].max()
         if not mth.isinf(a) | mth.isnan(a):
             listmax.append(a)
-        a=constant_spec[i].A[constant_spec[i].wl.between(750,875)].min()
+        a=constant_spec[i].A[constant_spec[i].wl.between(300,850)].min()
         if not mth.isinf(a) | mth.isnan(a):
             listmin.append(a)
     globmax=max(listmax)
@@ -304,7 +307,11 @@ def scattering_correction():
     # this plots each fitted baseline against the raw data, highlighting the chose segments
     for i in raw_spec :
         vars()['fig' + str(n)], vars()['ax' + str(n)] = plt.subplots()
-        tmp, baseline=baselinefitcorr_3seg_smooth(raw_spec[i],  segment1, segment2, segmentend, sigmafor3segment)
+        tmp=raw_spec[i].copy()
+        tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
+                                       window_length=21,
+                                       polyorder=3)
+        tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
         constant_spec[i]=rescale_corrected(tmp, scaling_top-30, scaling_top+30)
         vars()['ax' + str(n)].plot(raw_spec[i].wl,raw_spec[i].A)
         vars()['ax' + str(n)].plot(baseline.wl,baseline.A)
@@ -322,10 +329,10 @@ def scattering_correction():
     listmax=[]
     listmin=[]
     for i in ready_spec :
-        a=ready_spec[i].A[ready_spec[i].wl.between(300,500)].max()
+        a=ready_spec[i].A[ready_spec[i].wl.between(300,850)].max()
         if not (mth.isinf(a) | mth.isnan(a)):
             listmax.append(a)
-        a=ready_spec[i].A[ready_spec[i].wl.between(300,600)].min()
+        a=ready_spec[i].A[ready_spec[i].wl.between(300,850)].min()
         if not (mth.isinf(a) | mth.isnan(a)):
             listmin.append(a)
     globmax=max(listmax)
