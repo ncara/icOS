@@ -1,63 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Dec 25 17:27:40 2022
-@author: Nicolas Caramello
+Created on Wed Jan 18 15:07:56 2023
+
+@author: NCARAMEL
 """
-from tkinter import *
-from tkinter import ttk
+
+import wx
 import pandas as pd
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from statistics import mean
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
-from tkinter import filedialog
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-# from matplotlib.figure import Figure
-import os as osys
+from matplotlib.backends.backend_wx import NavigationToolbar2Wx
+import matplotlib
+matplotlib.use('wxAgg')
+
+
 import math as mth
 import seaborn as sns
 import numpy as np
 import scipy as sp
-from statistics import mean
-plt.rcParams["figure.figsize"] = (20/2.54,15/2.54)
-# dev_nUV=1
-# dev_nopeak=0.1
-# dev_nIR=0.5
-#specorr fct
-
-def set_scrollbar():
-    globcanvas.configure(scrollregion = globcanvas.bbox("all"))
-
-def baselineconst(df,segmentend):
-    """
-    This function removes a cosntant baseline taken from 600 to 800 nm from the given spectrum.
-
-    Parameters:
-    - df (pandas.DataFrame): The dataframe to be processed.
-    - segmentend (int): The index of the last point of the segment used to determine the baseline.
-
-    Returns:
-    - pandas.DataFrame: The corrected dataframe with the baseline removed.
-    """
-    a=df.copy()
-    baseline=df.copy()
-    baseline.A=mean(a.A[segmentend])
-    corrected=a.copy()
-    corrected.A=a.A.copy()-baseline.A
-    return corrected
-def rescale_corrected(df, wlmin, wlmax):
-    """
-    This function rescales the given spectrum to a maximum of 1.
-
-    Parameters:
-    - df (pandas.DataFrame): The dataframe to be rescaled.
-    - wlmin (int): The minimum wavelength to consider when determining the maximum value.
-    - wlmax (int): The maximum wavelength to consider when determining the maximum value.
-
-    Returns:
-    - pandas.DataFrame: The rescaled dataframe.
-    """
-    a=df.copy()
-    fact=1/a.A[a.wl.between(wlmin,wlmax,inclusive='both')].max() #1/a.A[a.wl.between(425,440)].max()
-    a.A=a.A.copy()*fact
-    return(a.copy())
+from scipy import signal 
+if 'app' in vars():
+    del app
 
 def fct_baseline(x, a, b):
     """
@@ -86,419 +51,358 @@ def linbase(x,a,b):
     """
     return a*x+b
 
-def baselinefitcorr_3seg_smooth(df,  segment1, segment2, segmentend, sigmaby3segment):
-    """
-    Fit and subtract a baseline from the absorbance data in a pandas DataFrame. The baseline is fit using a non-linear function with three segments, and the fit is weighted by the sigma values in the `sigmaby3segment` list. The resulting corrected data and the correction DataFrame are returned.
+class GenPanel(wx.Panel):
+    raw_spec = {}
+    const_spec = {}
+    ready_spec = {}
 
-    Parameters
-    ----------
-    df : pandas DataFrame
-        DataFrame containing the absorbance data. The DataFrame must have a 'wl' column for the wavelength and an 'A' column for the absorbance.
-    segment1 : list
-        List of indices for the first segment of the baseline fit.
-    segment2 : list
-        List of indices for the second segment of the baseline fit.
-    segmentend : list
-        List of indices for the third segment of the baseline fit.
-    sigmaby3segment : list
-        List of sigma values for the three segments of the baseline fit.
+class RightPanel(GenPanel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent, style = wx.FULL_REPAINT_ON_RESIZE | wx.SUNKEN_BORDER)
+        self.figure = plt.figure()
+        self.canvas = FigureCanvas(self, -1, self.figure)
+        self.toolbar = NavigationToolbar2Wx(self.canvas)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.canvas, proportion=1, flag=wx.EXPAND)
+        sizer.Add(self.toolbar, proportion=0, flag=wx.EXPAND)
+        self.SetSizer(sizer)
+        
+    def plot_data(self,typlot,scaling_top):
+        self.figure.clear()
+        ax = self.figure.add_subplot()
+        if typlot == 'raw':
+            print('plotting raw data')
+            listmax=[]
+            listmin=[]
+            for i in GenPanel.raw_spec :
+                a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(270,850)].max()
+                if not (mth.isinf(a) | mth.isnan(a)):
+                    listmax.append(a)
+                a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(270,850)].min()
+                if not (mth.isinf(a) | mth.isnan(a)):
+                    listmin.append(a)
+            # for i in GenPanel.raw_spec :
+            #     ax.plot(GenPanel.raw_spec[i].wl, GenPanel.raw_spec[i].A)
+            globmax=max(listmax)
+            globmin=min(listmin)
+            ax.set_xlabel('Wavelength [nm]', fontsize=10)  
+            ax.xaxis.set_label_coords(x=0.5, y=-0.08)      
+            ax.set_ylabel('Absorbance [AU]', fontsize=10)               
+            ax.yaxis.set_label_coords(x=-0.1, y=0.5)       
+            palette=sns.color_palette(palette='bright', n_colors=len(GenPanel.raw_spec))   
+            n=0                                            
+            for i in GenPanel.raw_spec :                          
+                ax.plot(GenPanel.raw_spec[i].wl,                  
+                        GenPanel.raw_spec[i].A ,                   
+                        linewidth=1,                    
+                       
+                        label=i +" top = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.3f'), 
+                        color=palette[n])               
+                n=n+1
+            ax.set_title('raw in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
+            ax.set_xlim([250, 800])
+            ax.set_ylim([globmin-0.05, globmax+0.1])
+            ax.tick_params(labelsize=8)
+            ax.legend(loc='upper right', shadow=True, prop={'size':8})
+            self.canvas.draw()
+        
+        elif typlot == 'const':
+            print('plotting constant corrected data')
+            listmax=[]
+            listmin=[]
+            for i in GenPanel.const_spec :
+                a=GenPanel.const_spec[i].A[GenPanel.const_spec[i].wl.between(200,300)].max()
+                if not mth.isinf(a) | mth.isnan(a):
+                    listmax.append(a)
+                a=GenPanel.const_spec[i].A[GenPanel.const_spec[i].wl.between(750,875)].min()
+                if not mth.isinf(a) | mth.isnan(a):
+                    listmin.append(a)
+            globmax=max(listmax)
+            globmin=min(listmin)
+            # create the fig and axis objects
+            # fig, ax = plt.subplots()
+            ax.set_xlabel('Wavelength [nm]', fontsize=10)
+            ax.xaxis.set_label_coords(x=0.5, y=-0.08)
+            ax.set_ylabel('Absorbance [AU]', fontsize=10)
+            ax.yaxis.set_label_coords(x=-0.1, y=0.5)
+            palette=sns.color_palette(palette='bright', n_colors=len(GenPanel.const_spec))
+            n=0
+            for i in GenPanel.const_spec :
+                ax.plot(GenPanel.const_spec[i].wl,
+                        GenPanel.const_spec[i].A ,
+                        linewidth=1,
+                        label=i+"Max abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
+                        color=palette[n])
+                n=n+1
+            ax.set_title('only scaled in crystallo absorbance spectra (no scattering correction)', fontsize=10, fontweight='bold')
+            ax.set_xlim([200, 875])
+            ax.set_ylim([globmin-0.1, globmax+0.2])
+            ax.tick_params(labelsize=10)
+            ax.yaxis.set_ticks(np.arange(int(10*globmin-1)/10, int(10*globmax+1)/10, 0.1))
+            ax.legend(loc='upper right', shadow=True, prop={'size':7})
+            self.canvas.draw()
+        elif typlot == 'ready':
+            print('plotting scattering corrected spectra')
+            listmax=[]
+            listmin=[]
+            for i in GenPanel.ready_spec :
+                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(300,500)].max()
+                if not (mth.isinf(a) | mth.isnan(a)):
+                    listmax.append(a)
+                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(300,600)].min()
+                if not (mth.isinf(a) | mth.isnan(a)):
+                    listmin.append(a)
+            globmax=max(listmax)
+            globmin=min(listmin) 
+            ax.set_xlabel('Wavelength [nm]', fontsize=10)  
+            ax.xaxis.set_label_coords(x=0.5, y=-0.08)      
+            ax.set_ylabel('Absorbance [AU]', fontsize=10)               
+            ax.yaxis.set_label_coords(x=-0.1, y=0.5)       
+            palette=sns.color_palette(palette='bright', n_colors=len(GenPanel.ready_spec))   
+            n=0                                            
+            for i in GenPanel.ready_spec :                          
+                ax.plot(GenPanel.ready_spec[i].wl,                  
+                          GenPanel.ready_spec[i].A ,                   
+                          linewidth=1,                    
+                           
+                          label=i +" top = " +format(GenPanel.ready_spec[i][GenPanel.ready_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
+                          color=palette[n])               
+                n=n+1
+            ax.set_title('scattering corrected in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
+            ax.set_xlim([250, 800])
+            ax.set_ylim([globmin-0.05, globmax+0.1])
+            ax.tick_params(labelsize=8)
+            ax.legend(loc='upper right', shadow=True, prop={'size':8})
+            self.canvas.draw()
+            
+    
+class LeftPanel(GenPanel):
+    
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent, style = wx.SUNKEN_BORDER)
+        self.button_openfile = wx.Button(self, label="Open File")
+        self.button_openfile.Bind(wx.EVT_BUTTON, self.on_open_file)
+        # constant baseline correction 
+        self.StaticBox_const = wx.StaticBox(self, label = "Constant Baseline")
+        constboxsizer = wx.StaticBoxSizer(self.StaticBox_const, wx.VERTICAL)
+        self.label_topeak = wx.StaticText(self, label="wl of the peak of interest", style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_topeak = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.button_constancorr = wx.Button(self, label="Correct for constant baseline")
+        self.button_constancorr.Bind(wx.EVT_BUTTON, self.on_constant_corr)
+        self.label_baseline_blue = wx.StaticText(self, label="Baseline blue-side Boundary", style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_baseline_blue = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.label_baseline_red = wx.StaticText(self, label="Baseline red-side Boundary", style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_baseline_red = wx.TextCtrl(self, style = wx.TE_CENTER)
+        constboxsizer.Add(self.field_topeak, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        constboxsizer.Add(self.label_topeak, 1, wx.ALIGN_CENTER, border = 0)
+        constboxsizer.Add(self.field_baseline_blue, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        constboxsizer.Add(self.label_baseline_blue, 1, wx.ALIGN_CENTER, border = 0)
+        constboxsizer.Add(self.field_baseline_red, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        constboxsizer.Add(self.label_baseline_red, 1, wx.ALIGN_CENTER, border  = 0)
+        constboxsizer.Add(self.button_constancorr, 1, wx.EXPAND | wx.ALL, border = 2)
+        
+        #Scattering correction 
+        self.StaticBox_scat = wx.StaticBox(self, label = "Scattering Baseline")
+        scatboxsizer = wx.StaticBoxSizer(self.StaticBox_scat, wx.VERTICAL)
+        self.button_scattercor = wx.Button(self, label="Correct for Scattering")
+        self.button_scattercor.Bind(wx.EVT_BUTTON, self.on_scat_corr)
+        self.label_nopeak_blue = wx.StaticText(self, label="blue-side boundary of the peakless segment", style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_nopeak_blue = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.label_nopeak_red = wx.StaticText(self, label="red-side boundary of the peakless segment", style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_nopeak_red = wx.TextCtrl(self, style = wx.TE_CENTER)
+        scatboxsizer.Add(self.field_nopeak_blue, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        scatboxsizer.Add(self.label_nopeak_blue, 1, wx.ALIGN_CENTER, border = 0)
+        scatboxsizer.Add(self.field_nopeak_red, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        scatboxsizer.Add(self.label_nopeak_red, 1, wx.ALIGN_CENTER, border = 0)
+        scatboxsizer.Add(self.button_scattercor, 1, wx.EXPAND | wx.ALL, border = 2)
+        
+        self.button_save = wx.Button(self, label="Save figure and spectra")
+        self.button_save.Bind(wx.EVT_BUTTON, self.on_save)
+        
+        # Add widgets to the right panel sizer
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.button_openfile, 1, wx.EXPAND | wx.ALL, border = 2)
 
-    Returns
-    -------
-    corrected : pandas DataFrame
-        DataFrame containing the corrected absorbance data.
-    correction : pandas DataFrame
-        DataFrame containing the correction data.
-    """
-    x=df.wl[segmentend].copy()
-    y=df.A[segmentend].copy()
-    segment=segment1+segment2+segmentend
-    tmp=df.copy()
-    x=tmp.wl[segment].copy()
-    y=tmp.A[segment].copy()
-    initialParameters = np.array([1e9,1])
-    n=len(tmp.A[segment1])
-    sigma=n*[sigmaby3segment[0]]
-    n=len(tmp.A[segment2])
-    sigma=sigma + n*[sigmaby3segment[1]]
-    n=len(tmp.A[segmentend])
-    sigma=sigma + n*[sigmaby3segment[2]]
-    para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
-    baseline=tmp.copy()
-    baseline.A=fct_baseline(baseline.wl.copy(), *para)
-    corrected=tmp.copy()
-    corrected.A=tmp.A.copy()-baseline.A
-    return(corrected, baseline)
+        sizer.Add(constboxsizer, 1, wx.EXPAND, border = 5)
+        
+        sizer.Add(scatboxsizer, 1, wx.EXPAND, border = 5)
 
-#GUI fct
+        sizer.Add(self.button_save, 1, wx.EXPAND | wx.ALL, border = 2)
+        self.SetSizer(sizer)
+        # self.SetBackgroundColour('grey') 
+        
+    def on_open_file(self, event):
+        wildcard = "TXT files (*.txt)|*.txt|All files (*.*)|*.*"
+        dialog = wx.FileDialog(self, "Choose one or several files", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_MULTIPLE)
+        if dialog.ShowModal() == wx.ID_OK:
+            file_paths = dialog.GetPaths()
+            for file_path in file_paths:
+                file_name = file_path.split('\\')[-1][0:-4]
+                print(file_name)
+                GenPanel.raw_spec[file_name] = pd.read_csv(filepath_or_buffer= file_path,
+                              sep= "\t",
+                              decimal=".",
+                              skiprows=17,
+                              skip_blank_lines=True,
+                              skipfooter=2,
+                              names=['wl','A'],
+                              engine="python")
+                GenPanel.raw_spec[file_name].index=GenPanel.raw_spec[file_name].wl
+                print(f"File '{file_name}' added to dictionary with data: {GenPanel.raw_spec[file_name].A}")
+            self.update_right_panel('raw')
+        dialog.Destroy()
+        # Plot the DataFrame
+    def on_constant_corr(self, event):
+        baseline_blue = float(self.field_baseline_blue.GetValue())
+        baseline_red = float(self.field_baseline_red.GetValue())
+        scaling_top = float(self.field_topeak.GetValue())
+        segmentend=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
+        for i in GenPanel.raw_spec:
+            tmp=GenPanel.raw_spec[i].copy()
+            tmp.A-=mean(GenPanel.raw_spec[i].A[segmentend])
+            tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
+            tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                               window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                               polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+            GenPanel.const_spec[i]=tmp.copy()
+            GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
+            print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
+        self.update_right_panel('const')
+        
+    def on_scat_corr(self, event):
+        baseline_blue = float(self.field_baseline_blue.GetValue())
+        baseline_red = float(self.field_baseline_red.GetValue())
+        scaling_top = float(self.field_topeak.GetValue())
+        nopeak_blue = float(self.field_nopeak_blue.GetValue())
+        nopeak_red = float(self.field_nopeak_red.GetValue())
+        rightborn=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].A[GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(200,250)].idxmax()+20
+        leftborn=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].A[GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(200,250)].idxmax()
+        segment1 = GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(nopeak_blue,nopeak_red, inclusive='both')
+        segment2 = GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(leftborn,rightborn, inclusive='both')
+        segmentend=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
+        segment=segment1+segment2+segmentend
+        #peakless visible segment
+        sigmafor3segment=[1,1,1]
+        n=0
+        # this plots each fitted baseline against the raw data, highlighting the chose segments
+        for i in GenPanel.raw_spec :
+            tmp=GenPanel.raw_spec[i].copy()
+            tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
+                                          window_length=21,
+                                          polyorder=3)
+            x=tmp.wl[segment].copy()
+            y=tmp.A[segment].copy()
+            initialParameters = np.array([1e9,1])
+            n=len(tmp.A[segment1])
+            sigma=n*[sigmafor3segment[0]]
+            n=len(tmp.A[segment2])
+            sigma=sigma + n*[sigmafor3segment[1]]
+            n=len(tmp.A[segmentend])
+            sigma=sigma + n*[sigmafor3segment[2]]
+            para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+            baseline=tmp.copy()
+            baseline.A=fct_baseline(baseline.wl.copy(), *para)
+            corrected=tmp.copy()
+            corrected.A=tmp.A.copy()-baseline.A
+            corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
+            GenPanel.ready_spec[i]=corrected
+            # tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
+            vars()['fig' + str(n)], vars()['ax' + str(n)] = plt.subplots()
+            vars()['ax' + str(n)].set_title(str(i))
+            vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl,GenPanel.raw_spec[i].A)
+            vars()['ax' + str(n)].plot(baseline.wl,baseline.A)
+            vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment1], GenPanel.raw_spec[i].A[segment1], color = 'lime')
+            vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment2], GenPanel.raw_spec[i].A[segment2], color = 'magenta')
+            vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson') 
+            vars()['fig' + str(n)].show()
+            
+            # this defines a canvas for each and plots them on the same line using tk.grid
+            # plt.plot(ax=vars()['ax' + str(n)])
+            # plt.show(vars()['ax' + str(n)])  # find a way to prevent the current plot from showing up with the rest 
+            # vars()['canvas' + str(n)] = FigureCanvasTkAgg(plt.gcf(), master=secondframe)
+            # vars()['canvas' + str(n)].draw()
+            # vars()['canvas' + str(n)].get_tk_widget().grid(row=m, column=n)
+            n+=1
+        self.update_right_panel('ready')
+        
+        pass
+    def on_save(self, event):
+        wildcard = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+        dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+        if dialog.ShowModal() == wx.ID_OK:
+            totalpath = dialog.GetPath()
+            # file_path2 = file_path.split('\\')[:-1]
+            file_path=''
+            for i in totalpath.split('\\')[:-1]:
+                file_path+=i+'\\'
+            print(file_path)
+            file_name = totalpath.split('\\')[-1][0:-4]
+                
+        dialog.Destroy()
+        towrite_raw_spectra=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].drop(columns=['wl','A'])
+        for spec in GenPanel.raw_spec:
+            towrite_raw_spectra[spec]=GenPanel.raw_spec[spec].A
+            print("File" + file_path + f" '{spec}' saved in: raw_{file_name}.csv in column {spec}")
+        towrite_raw_spectra.to_csv('raw_' +  file_name + ".csv", index=True)
+        if len(GenPanel.const_spec)==len(GenPanel.raw_spec):
+            towrite_constant_spectra=GenPanel.raw_spec[next(iter(GenPanel.const_spec))].drop(columns=['wl','A'])
+            for spec in GenPanel.const_spec:
+                towrite_constant_spectra[spec]=GenPanel.const_spec[spec].A
+                print("File" + file_path + f" '{spec}' saved in: constant_{file_name}.csv in column {spec}")
+            towrite_raw_spectra.to_csv('constant_' +  file_name + ".csv", index=True)
+        if len(GenPanel.ready_spec)==len(GenPanel.raw_spec):
+            towrite_ready_spectra=GenPanel.raw_spec[next(iter(GenPanel.ready_spec))].drop(columns=['wl','A'])
+            for spec in GenPanel.raw_spec:
+                towrite_ready_spectra[spec]=GenPanel.raw_spec[spec].A
+                print("File" + file_path + f" '{spec}' saved in: ready_{file_name}.csv in column {spec}")
+            towrite_raw_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
+        self.GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
+        self.GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
+        self.GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
+        print("Figure saved at: " + file_path + file_name + '.png')
+        
+        
+    def update_right_panel(self, typlot):
+        if len(self.field_topeak.GetValue()) == 0:
+            scaling_top=280
+        else :
+            scaling_top = float(self.field_topeak.GetValue())
+        print(scaling_top)
+        self.GetParent().right_panel.plot_data(typlot, scaling_top)
 
-def open_file():
-    """
-    This function opens a file dialog to allow the user to select one or more files. It then reads the contents of the selected files into pandas DataFrames, plots the contents of the DataFrames using matplotlib, and displays the plot in a matplotlib canvas. 
+class MainFrame(wx.Frame):
+    def __init__(self):
+        wx.Frame.__init__(self, None, title="icOS toolbox", size = (800,600))
+        # self.raw_spec = {}
+        # self.constant_spec = {}
+        # self.ready_spec = {}
+        # self.baseline_blue = 600
+        # self.baseline_red = 800
+        # self.nopeak_blue = 300
+        # self.nopeak_red = 320
+        # self.scaling_top = 500
 
-    The function uses the following libraries: 
-    - filedialog (from tkinter)
-    - os.path
-    - pandas
-    - matplotlib
-    - seaborn
+        # Create splitter
+        self.splitter = wx.SplitterWindow(self)
+        # Create left and right panels
+        self.splitter.left_panel = LeftPanel(self.splitter)
+        self.splitter.right_panel = RightPanel(self.splitter)
+        # Add panels to splitter
+        self.splitter.SplitVertically(self.splitter.left_panel, self.splitter.right_panel, 200)
+        self.splitter.SetSashGravity(0.5)
+        # Set main sizer
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.splitter, 1, wx.EXPAND)
+        self.SetSizer(sizer)
+        self.Bind(wx.EVT_CLOSE, self.on_close)
+        self.Show()
+    def on_close(self, event):
+        # self.Close()
+        self.Destroy()
 
-    The function takes no arguments, but uses a global variable `m` to keep track of the number of plots displayed.
-    """
-    # m is a row counter for the plot frame
-    global m
-    # Prompt the user to select a file
-    file_paths = filedialog.askopenfilenames()
-    # Create a figure and axis object using subplots
-    # Loop through the file paths
-    for file_path in file_paths:
-      # Read the contents of the file into a pandas DataFrame
-      file_p1, file_ext = osys.path.splitext(file_path)
-      file_p2, file_name = osys.path.split(file_p1)
-      df = pd.read_csv(filepath_or_buffer= file_path,
-                         sep= "\t",
-                         decimal=".",
-                         skiprows=17,
-                         skip_blank_lines=True,
-                         skipfooter=2,
-                         names=['wl','A'],
-                         engine="python")
-      # Plot the contents of the DataFrame
-      df.index=df.wl
-      raw_spec[file_name]=df
-    listmax=[]
-    listmin=[]
-    for i in raw_spec :
-        a=raw_spec[i].A[raw_spec[i].wl.between(200,300)].max()
-        if not mth.isinf(a) | mth.isnan(a):
-            listmax.append(a)
-        a=raw_spec[i].A[raw_spec[i].wl.between(750,875)].min()
-        if not mth.isinf(a) | mth.isnan(a):
-            listmin.append(a)
-    globmax=max(listmax)
-    globmin=min(listmin)
-    # create the fig and axis objects
-    fig, ax = plt.subplots()
-    ax.set_xlabel('Wavelength [nm]', fontsize=10)
-    ax.xaxis.set_label_coords(x=0.5, y=-0.08)
-    ax.set_ylabel('Absorbance [AU]', fontsize=10)
-    ax.yaxis.set_label_coords(x=-0.1, y=0.5)
-    palette=sns.color_palette(palette='bright', n_colors=len(raw_spec))
-    n=0
-    for i in raw_spec :
-        ax.plot(raw_spec[i].wl,
-                raw_spec[i].A ,
-                linewidth=1,
-                label=i+
-                      "Max abs peak ="+
-                      format(raw_spec[i][raw_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
-                color=palette[n])
-        n=n+1
-    ax.set_title('raw spectra', fontsize=10, fontweight='bold')
-    ax.set_xlim([200, 875])
-    ax.set_ylim([globmin-0.1, globmax+0.2])
-    ax.tick_params(labelsize=10)
-    ax.yaxis.set_ticks(np.arange(int(10*globmin-1)/10, int(10*globmax+1)/10, 0.1))
-    plt.legend(loc='upper right', shadow=True, prop={'size':7})
-    # Plot the contents of the DataFrame
-    plt.plot(ax=ax)
-    # Display the plot in a matplotlib canvas
-    canvas = FigureCanvasTkAgg(plt.gcf(), master=secondframe)
-    canvas.draw()
-    canvas.get_tk_widget().grid(row=m, column=0)
-    m+=1
-    set_scrollbar()
 
-def constant_baseline_correction():
-    """
-    This function applies a constant baseline correction to the spectra in the `raw_spec` dictionary. The user is prompted to enter a blue and red wavelength value to define the baseline segment, as well as a scaling_top value used to rescale the spectra after correction.
-    The function uses the following libraries: 
-    - math
-    - numpy
-    - matplotlib
-    - seaborn
-    The function takes no arguments, but uses global variables `m`, `raw_spec`, `constant_spec`, `input_field1`, `input_field2`, `input_field3`, `constant_label` 
-    """
-    # m is the max number of rows of the plotting frame
-    global m
-    # Get the value from the input field
-    baseline_blue = float(input_field1.get())
-    baseline_red = float(input_field2.get())
-    scaling_top = float(input_field3.get())
-      # Do something with the value
-      # result = input_value * 2
-      # Update the label to warn the user of the correction calculation
-    constant_label.config(text="Correcting spectra for constant baseline from " + str(baseline_blue) + ' to ' + str(baseline_red) + ' nm')
-    segmentend=raw_spec[next(iter(raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
-    for i in raw_spec:
-        tmp=baselineconst(raw_spec[i],segmentend)
-        tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
-                                       window_length=21,
-                                       polyorder=3)
-        constant_spec[i]=rescale_corrected(tmp, scaling_top-10, scaling_top+10)
-        raw_spec[i].index=raw_spec[i].wl
-    listmax=[]
-    listmin=[]
-    for i in constant_spec :
-        a=constant_spec[i].A[constant_spec[i].wl.between(300,850)].max()
-        if not mth.isinf(a) | mth.isnan(a):
-            listmax.append(a)
-        a=constant_spec[i].A[constant_spec[i].wl.between(300,850)].min()
-        if not mth.isinf(a) | mth.isnan(a):
-            listmin.append(a)
-    globmax=max(listmax)
-    globmin=min(listmin)
-    # create the fig and axis objects
-    fig, ax = plt.subplots()
-    ax.set_xlabel('Wavelength [nm]', fontsize=10)
-    ax.xaxis.set_label_coords(x=0.5, y=-0.08)
-    ax.set_ylabel('Absorbance [AU]', fontsize=10)
-    ax.yaxis.set_label_coords(x=-0.1, y=0.5)
-    palette=sns.color_palette(palette='bright', n_colors=len(constant_spec))
-    n=0
-    for i in constant_spec :
-        ax.plot(constant_spec[i].wl,
-                constant_spec[i].A ,
-                linewidth=1,
-                label=i+"Max abs peak ="+format(constant_spec[i][constant_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
-                color=palette[n])
-        n=n+1
-    ax.set_title('only scaled in crystallo absorbance spectra (no scattering correction)', fontsize=10, fontweight='bold')
-    ax.set_xlim([200, 875])
-    ax.set_ylim([globmin-0.1, globmax+0.2])
-    ax.tick_params(labelsize=10)
-    ax.yaxis.set_ticks(np.arange(int(10*globmin-1)/10, int(10*globmax+1)/10, 0.1))
-    ax.legend(loc='upper right', shadow=True, prop={'size':7})
-    # Plot the contents of the DataFrame
-    plt.plot(ax=ax)
-    # Display the plot in a matplotlib canvas
-    canvas = FigureCanvasTkAgg(plt.gcf(), master=secondframe)
-    canvas.draw()
-    canvas.get_tk_widget().grid(row=m, column=0)
-    m+=1
-    set_scrollbar()
 
-def scattering_correction():
-    """
-    This function applies a scattering correction to the spectra in the `raw_spec` dictionary. The user is prompted to enter a blue and red wavelength value to define the baseline segment, a scaling_top value used to rescale the spectra after correction, a nopeak_blue and nopeak_red value used to define the peakless segment where the middle of the scattering baseline is fitted. The leftmost segment is always taken automatically.
-    The function uses the following libraries: 
-    - math
-    - numpy
-    - matplotlib
-    - seaborn
-    The function takes no arguments, but uses global variables `m`, `raw_spec`, `constant_spec`, `input_field1`, `input_field2`, `input_field3`, `input_field4`, `input_field5`
-    """
-    global m
-    baseline_blue = float(input_field1.get())
-    baseline_red = float(input_field2.get())
-    scaling_top = float(input_field3.get())
-    nopeak_blue = float(input_field4.get())
-    nopeak_red = float(input_field5.get())
-    # baseline segment
-    segmentend = raw_spec[next(iter(raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
-    # near UV segment
-    rightborn=raw_spec[next(iter(raw_spec))].A[raw_spec[next(iter(raw_spec))].wl.between(200,250)].idxmax()+20
-    leftborn=raw_spec[next(iter(raw_spec))].A[raw_spec[next(iter(raw_spec))].wl.between(200,250)].idxmax()
-    segment1 = raw_spec[next(iter(raw_spec))].wl.between(nopeak_blue,nopeak_red, inclusive='both')
-    segment2 = raw_spec[next(iter(raw_spec))].wl.between(leftborn,rightborn, inclusive='both')
-    #peakless visible segment
-    sigmafor3segment=[1,1,1]
-    n=0
-    # this plots each fitted baseline against the raw data, highlighting the chose segments
-    for i in raw_spec :
-        vars()['fig' + str(n)], vars()['ax' + str(n)] = plt.subplots()
-        tmp=raw_spec[i].copy()
-        tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
-                                       window_length=21,
-                                       polyorder=3)
-        tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
-        constant_spec[i]=rescale_corrected(tmp, scaling_top-30, scaling_top+30)
-        vars()['ax' + str(n)].plot(raw_spec[i].wl,raw_spec[i].A)
-        vars()['ax' + str(n)].plot(baseline.wl,baseline.A)
-        vars()['ax' + str(n)].plot(raw_spec[i].wl[segment1], raw_spec[i].A[segment1])
-        vars()['ax' + str(n)].plot(raw_spec[i].wl[segment2], raw_spec[i].A[segment2])
-        vars()['ax' + str(n)].plot(raw_spec[i].wl[segmentend], raw_spec[i].A[segmentend])
-        # this defines a canvas for each and plots them on the same line using tk.grid
-        plt.plot(ax=vars()['ax' + str(n)])
-        vars()['canvas' + str(n)] = FigureCanvasTkAgg(plt.gcf(), master=secondframe)
-        vars()['canvas' + str(n)].draw()
-        vars()['canvas' + str(n)].get_tk_widget().grid(row=m, column=n)
-        ready_spec[i]=tmp
-        n+=1
-    # This segment plots the corrected spectra together at the end of the current line
-    listmax=[]
-    listmin=[]
-    for i in ready_spec :
-        a=ready_spec[i].A[ready_spec[i].wl.between(300,850)].max()
-        if not (mth.isinf(a) | mth.isnan(a)):
-            listmax.append(a)
-        a=ready_spec[i].A[ready_spec[i].wl.between(300,850)].min()
-        if not (mth.isinf(a) | mth.isnan(a)):
-            listmin.append(a)
-    globmax=max(listmax)
-    globmin=min(listmin)
-    fig, ax = plt.subplots()     
-    ax.set_xlabel('Wavelength [nm]', fontsize=10)  
-    ax.xaxis.set_label_coords(x=0.5, y=-0.08)      
-    ax.set_ylabel('Absorbance [AU]', fontsize=10)               
-    ax.yaxis.set_label_coords(x=-0.1, y=0.5)       
-    palette=sns.color_palette(palette='bright', n_colors=len(ready_spec))   
-    n=0                                            
-    for i in ready_spec :                          
-        ax.plot(ready_spec[i].wl,                  
-                  ready_spec[i].A ,                   
-                  linewidth=1,                    
-                   
-                  label=i +" top = " +format(ready_spec[i][ready_spec[i].wl.between(320,850)].A.idxmax(), '.2f'), 
-                  color=palette[n])               
-        n=n+1
-    ax.set_title('scattering corrected in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
-    ax.set_xlim([250, 800])
-    ax.set_ylim([globmin-0.05, globmax+0.1])
-    ax.tick_params(labelsize=8)
-    ax.legend(loc='upper right', shadow=True, prop={'size':8})
-    plt.plot(ax=ax)
-    canvas = FigureCanvasTkAgg(plt.gcf(), master=secondframe)
-    canvas.draw()
-    canvas.get_tk_widget().grid(row=m,column = n)
-    m+=1
-    set_scrollbar()
-
-def save_plot():
-    """
-    This function saves the current plot displayed in the matplotlib canvas in three different formats:
-    svg, png and csv. The user can choose the location and the name of the file using the filedialog.asksaveasfilename function.
-    The csv file will contain the raw spectra data with columns 'wl' and 'A' dropped.
-    """
-    image_name = filedialog.asksaveasfilename(defaultextension=".svg")
-    plt.savefig(image_name, dpi=1000, transparent=True,bbox_inches='tight')
-    image_namepng=image_name[0:-4]+'.png'
-    plt.savefig(image_namepng, dpi=1000, transparent=True,bbox_inches='tight')
-    towrite_raw_spectra=raw_spec[next(iter(raw_spec))].drop(columns=['wl','A'])
-    for spec in raw_spec:
-        towrite_raw_spectra[spec]=raw_spec[spec].A
-    towrite_raw_spectra.to_csv(image_name[0:-4] + ".csv", index=True)
-    if len(constant_spec)==len(raw_spec):
-        towrite_constant_spectra=raw_spec[next(iter(constant_spec))].drop(columns=['wl','A'])
-        for spec in constant_spec:
-            towrite_constant_spectra[spec]=constant_spec[spec].A
-        towrite_raw_spectra.to_csv(image_name[0:-4] + ".csv", index=True)
-    if len(ready_spec)==len(raw_spec):
-        towrite_ready_spectra=raw_spec[next(iter(ready_spec))].drop(columns=['wl','A'])
-        for spec in raw_spec:
-            towrite_ready_spectra[spec]=raw_spec[spec].A
-        towrite_raw_spectra.to_csv(image_name[0:-4] + ".csv", index=True)
-
-def close_plot():
-    """
-    This function closes the current plot displayed in the matplotlib canvas by destroying the last child (which should be the matplotlib canvas) of the main root.
-    """
-    # Get the list of all children of the main root
-    children = secondframe.winfo_children()
-    # Get the last child in the list (which should be the matplotlib canvas)
-    last_child = children[-1]
-    # Destroy the last child
-    last_child.destroy()
-
-# Create the main root
-# Create a function that will be called when the "Open" button is clicked
-global baseline_blue
-global baseline_red
-global scaling_top
-global nopeak_blue
-global nopeak_red
-global raw_spec
-global fig
-global ax
-global m
-raw_spec={}
-constant_spec={}
-ready_spec={}
-fig, ax = plt.subplots()
-baseline_blue=600
-baseline_red=800
-nopeak_blue=300
-nopeak_red=320
-scaling_top=500
-m = 0
-root = Tk()
-# root.iconbitmap('the scaled down icOS lab picture')
-root.title("icOS toolbox")
-# root.geometry("800x800")
-#frame containing buttons and entry fields
-butframe = Frame(root)
-butframe.pack(side = TOP, fill=X)
-#frame for plotting
-plotframe = Frame(root)
-plotframe.pack(side = BOTTOM, fill = BOTH, expand = 1)
-# create a global canvas in the second frame to implement the scrollbar
-globcanvas=Canvas(plotframe)
-globcanvas.configure(scrollregion = globcanvas.bbox("all"))
-globcanvas.pack(side=LEFT, fill=BOTH ,expand=1) #slide to 0 if it's a problem
-# add scrollbar to canvas
-scrollbar=ttk.Scrollbar(plotframe, orient=VERTICAL,command=globcanvas.yview)
-scrollbar.pack(side=RIGHT,fill=Y)
-h_scrollbar=ttk.Scrollbar(plotframe, orient=HORIZONTAL,command=globcanvas.xview)
-h_scrollbar.pack(side=BOTTOM,fill=X,expand=1)
-# configure the canvas
-globcanvas.configure(yscrollcommand=scrollbar.set)
-globcanvas.configure(xscrollcommand=h_scrollbar.set)
-globcanvas.bind('<Configure>', lambda e: globcanvas.configure(scrollregion = globcanvas.bbox("all")))
-globcanvas.bind('<Configure>', lambda e: globcanvas.configure(scrollregion = globcanvas.bbox("all")))
-# create an other frame in the canvas
-secondframe=Frame(globcanvas)#, fill=BOTH, expand = 1)
-# add that frame to a window in the canvas with a slight offset
-globcanvas.create_window((0,0), window=secondframe, anchor = 'nw')#, width=600,height=400)
-# Create an "Open" button
-open_button = Button(butframe,text="Open new file", command=open_file)
-open_button.pack()
-# Create a "Save" button
-save_button = Button(butframe,text="Save last plot", command=save_plot)
-save_button.pack()
-# Create a "Close" button
-save_button = Button(butframe,text="Close last plot", command=close_plot)
-save_button.pack()
-# Create a constant_corr_button to trigger the function
-constant_corr_button = Button(butframe, text="Correct for constant baseline", command=constant_baseline_correction)
-# Create labels and input fields for the constant baseline correction
-input_label1 = Label(butframe, text="blue-side boundary to the baseline:")
-input_field1 = Entry(butframe)
-input_label2 = Label(butframe, text="red-side boundary to the baseline:")
-input_field2 = Entry(butframe)
-input_label3 = Label(butframe, text="top of the peak used for scaling:")
-input_field3 = Entry(butframe)
-# Create a label to display the result
-constant_label = Label(butframe, text="Constant correction:")
-# Create a scattering_corr_button to trigger the function
-scatt_button = Button(butframe, text="Correct for scattering", command=scattering_correction)
-# Create a label for the scattering correction
-scatt_label = Label(butframe, text="Scattering correction correction:")
-input_label4 = Label(butframe, text="blue-side of a peakless segment:")
-input_field4 = Entry(butframe)
-input_label5 = Label(butframe, text="red-side of a peakless segment:")
-input_field5 = Entry(butframe)
-# Create labels and input fields for the scattering baseline correction
-# Place the widgets in the root
-constant_label.pack()
-constant_corr_button.pack()
-input_label1.pack()
-input_field1.pack()
-input_label2.pack()
-input_field2.pack()
-input_label3.pack()
-input_field3.pack()
-scatt_label.pack()
-scatt_button.pack()
-input_label4.pack()
-input_field4.pack()
-input_label5.pack()
-input_field5.pack()
-#button to try and make the scrollbar appear
-scrollbut = Button(butframe, text = 'scroll', command = set_scrollbar )
-scrollbut.pack()
-# Create a button to close the root
-close_button = Button(butframe,text="Close main window", command=root.destroy)
-close_button.pack()
-# scrollbar.pack(side="right", fill="y")
-# Run the main loop
-root.mainloop()
+if __name__ == "__main__":
+    app = wx.App()
+    frame = MainFrame()
+    app.MainLoop()
