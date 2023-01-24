@@ -7,6 +7,8 @@ These scripts require the preliminary installation of python 3.__. It uses sever
 - seaborn (color palette).
 - wxPython (Graphical User Interface library)
 
+For those not able to use wxPython, a plceholder clunkier version using tkinter is available (icOS_toolbox_GUI-nowxPython.py)
+
 The following  packages are used but should be normally shipped with all versions of python.
 
 - pandas
