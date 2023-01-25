@@ -94,16 +94,23 @@ class RightPanel(GenPanel):
             if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                 centroids = self.GetParent().left_panel.mass_center(typecorr = typecorr)                                        
             for i in GenPanel.raw_spec :                          
-                ax.plot(GenPanel.raw_spec[i].wl,                  
+                             
+                
+                if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
+                    ax.plot(GenPanel.raw_spec[i].wl,                  
                         GenPanel.raw_spec[i].A ,                   
                         linewidth=1,                    
                        
-                        label=i +" top = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5)].A.idxmax(), '.3f'), 
-                        color=palette[n])               
-                
-                if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
+                        label=i +" mass center = " +format(centroids[i], '.3f'), 
+                        color=palette[n]) 
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
-                    # print(self.GetParent().left_panel.mass_center_checkbox.GetValue())
+                else:
+                    ax.plot(GenPanel.raw_spec[i].wl,                  
+                            GenPanel.raw_spec[i].A ,                   
+                            linewidth=1,                    
+                           
+                            label=i +" mass center = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5)].A.idxmax(), '.3f'), 
+                            color=palette[n])  
                 n=n+1
             ax.set_title('raw in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
             ax.set_xlim([250, 800])
@@ -136,13 +143,20 @@ class RightPanel(GenPanel):
             if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                 centroids = self.GetParent().left_panel.mass_center(typecorr = typecorr)  
             for i in GenPanel.const_spec :
-                ax.plot(GenPanel.const_spec[i].wl,
+                
+                if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
+                    ax.plot(GenPanel.const_spec[i].wl,
                         GenPanel.const_spec[i].A ,
                         linewidth=1,
-                        label=i+"Max abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
+                        label=i+" mass center = " +format(centroids[i], '.3f'),
                         color=palette[n])
-                if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
+                else :
+                    ax.plot(GenPanel.const_spec[i].wl,
+                            GenPanel.const_spec[i].A ,
+                            linewidth=1,
+                            label=i+"Max abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
+                            color=palette[n])
                 n=n+1
             ax.set_title('only scaled in crystallo absorbance spectra (no scattering correction)', fontsize=10, fontweight='bold')
             ax.set_xlim([200, 875])
@@ -172,15 +186,20 @@ class RightPanel(GenPanel):
             n=0  
             if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                 centroids = self.GetParent().left_panel.mass_center(typecorr = typecorr)                                            
-            for i in GenPanel.ready_spec :                          
-                ax.plot(GenPanel.ready_spec[i].wl,                  
-                          GenPanel.ready_spec[i].A ,                   
-                          linewidth=1,                    
-                           
-                          label=i +" top = " +format(GenPanel.ready_spec[i][GenPanel.ready_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
-                          color=palette[n]) 
+            for i in GenPanel.ready_spec :
                 if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
+                    ax.plot(GenPanel.ready_spec[i].wl,                  
+                          GenPanel.ready_spec[i].A ,                   
+                          linewidth=1,
+                          label=i +" mass center = " +format(centroids[i], '.3f'), 
+                          color=palette[n]) 
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
+                else :
+                    ax.plot(GenPanel.ready_spec[i].wl,                  
+                              GenPanel.ready_spec[i].A ,                   
+                              linewidth=1,
+                              label=i +" mass center = " +format(GenPanel.ready_spec[i][GenPanel.ready_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
+                              color=palette[n]) 
                 n=n+1
             ax.set_title('scattering corrected in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
             ax.set_xlim([250, 800])
