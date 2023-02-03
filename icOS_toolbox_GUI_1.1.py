@@ -505,7 +505,7 @@ class LeftPanel(GenPanel):
 
 class MainFrame(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, title="icOS toolbox", size = (800,600))
+        wx.Frame.__init__(self, None, title="icOS toolbox", size = (800,800))
         # self.raw_spec = {}
         # self.constant_spec = {}
         # self.ready_spec = {}
