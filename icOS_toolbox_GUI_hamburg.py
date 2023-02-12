@@ -13,9 +13,10 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_wx import NavigationToolbar2Wx
 import matplotlib
+
 matplotlib.use('wxAgg')
-
-
+import platform
+import os
 import math as mth
 import seaborn as sns
 import numpy as np
@@ -23,6 +24,13 @@ import scipy as sp
 from scipy import signal 
 if 'app' in vars():
     del app
+
+
+system = platform.system()
+if system == "Windows":
+    path = os.path.join("C:\\", "path", "to", "save", "output")
+else:
+    path = os.path.join("/", "path", "to", "save", "output")
 
 def fct_baseline(x, a, b):
     """
@@ -317,6 +325,11 @@ class LeftPanel(GenPanel):
         # mass center
         self.mass_center_checkbox = wx.CheckBox(self, label = 'Mass center calculation ?', style = wx.CHK_2STATE)        
         
+        # remove a spec
+        self.button_drop_spec = wx.Button(self, label='Remove a spectrum')
+        self.button_drop_spec.Bind(wx.EVT_BUTTON, self.on_drop_spec)
+        
+        # save
         self.button_save = wx.Button(self, label="Save figure and spectra")
         self.button_save.Bind(wx.EVT_BUTTON, self.on_save)
         
@@ -329,11 +342,14 @@ class LeftPanel(GenPanel):
         sizer.Add(scatboxsizer, 1, wx.EXPAND, border = 5)
         sizer.Add(self.button_diffspec, 1, wx.EXPAND | wx.ALL, border = 2)
         sizer.Add(self.mass_center_checkbox, 1, wx.ALIGN_CENTER)
+        sizer.Add(self.button_drop_spec, 1, wx.EXPAND | wx.ALL, border = 2)
         sizer.Add(self.button_save, 1, wx.EXPAND | wx.ALL, border = 2)
         self.SetSizer(sizer)
         # self.SetBackgroundColour('grey') 
         
+        
     def on_open_file(self, event):
+        self.typecorr = 'raw'
         wildcard = "ASC files (*.asc)|*.asc|All files (*.*)|*.*"
         dialog = wx.FileDialog(self, "Choose one or several files", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_MULTIPLE)
         if dialog.ShowModal() == wx.ID_OK:
@@ -358,10 +374,11 @@ class LeftPanel(GenPanel):
                     GenPanel.raw_spec[file_name].at[i,'A'] = GenPanel.raw_spec[file_name].loc[i].mean()
                 GenPanel.raw_spec[file_name].index=GenPanel.raw_spec[file_name].wl
                 print(f"File '{file_name}' added to dictionary with data: {GenPanel.raw_spec[file_name].A}")
-            self.update_right_panel('raw')
+            self.update_right_panel(self.typecorr)
         dialog.Destroy()
         # Plot the DataFrame
     def on_constant_corr(self, event):
+        self.typecorr = 'const'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
         scaling_top = float(self.field_topeak.GetValue())
@@ -376,9 +393,10 @@ class LeftPanel(GenPanel):
             GenPanel.const_spec[i]=tmp.copy()
             GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
             print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
-        self.update_right_panel('const')
+        self.update_right_panel(self.typecorr)
         
     def on_scat_corr(self, event):
+        self.typecorr = 'ready'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
         scaling_top = float(self.field_topeak.GetValue())
@@ -424,17 +442,10 @@ class LeftPanel(GenPanel):
             vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment2], GenPanel.raw_spec[i].A[segment2], color = 'magenta')
             vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson') 
             vars()['fig' + str(n)].show()
-            
-            # this defines a canvas for each and plots them on the same line using tk.grid
-            # plt.plot(ax=vars()['ax' + str(n)])
-            # plt.show(vars()['ax' + str(n)])  # find a way to prevent the current plot from showing up with the rest 
-            # vars()['canvas' + str(n)] = FigureCanvasTkAgg(plt.gcf(), master=secondframe)
-            # vars()['canvas' + str(n)].draw()
-            # vars()['canvas' + str(n)].get_tk_widget().grid(row=m, column=n)
             n+=1
-        self.update_right_panel('ready')
+        self.update_right_panel(self.typecorr)
         
-    def mass_center(self, typecorr):
+    def mass_center(self, typecorr):  #make typecorr a global left panel value to handle the difference spectrum 
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
         scaling_top = float(self.field_topeak.GetValue())
@@ -499,24 +510,44 @@ class LeftPanel(GenPanel):
 
         
     def on_diff_spec(self, event):
-        # self.check_list_box = wx.CheckListBox(self, choices=GenPanel.raw_spec.keys())
-        # listdiffspec = self.check_list_box.GetChecked()
-        # self.btn_ok = wx.Button(self, wx.ID_OK)
-        # self.btn_ok.Bind(wx.EVT_BUTTON, self.on_ok)
-        # self.btn_ok.Enable(False)
-        # self.btn_ok.Enable(len(listdiffspec) == 2) # this is to make sure that the checkbox can only be closed with process going if two spectra are selected
-        # GenPanel.diffspec['wl']=GenPanel.raw_spec[listdiffspec[0]].wl
-        # GenPanel.diffspec['A']=GenPanel.raw_spec[listdiffspec[0]]['A']-GenPanel.raw_spec[listdiffspec[1]]['A']
-        file_chooser = FileChooser(self, "Choose Two Files", list(GenPanel.raw_spec.keys()))
+        file_chooser = FileChooser(self, "Choose Two Files", 2, list(GenPanel.raw_spec.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             selections = file_chooser.check_list_box.GetCheckedStrings()
             print(selections)
-        GenPanel.diffspec.wl = GenPanel.raw_spec[selections[0]].wl
-        GenPanel.diffspec.index = GenPanel.diffspec.wl
-        print(GenPanel.diffspec)
-        GenPanel.diffspec.A = GenPanel.raw_spec[selections[0]].A-GenPanel.raw_spec[selections[1]].A
+            #add if statements to handle the diff spectra for all 
+        if self.typecorr == 'raw':
+            GenPanel.diffspec.wl = GenPanel.raw_spec[selections[0]].wl
+            GenPanel.diffspec.index = GenPanel.diffspec.wl
+            print(GenPanel.diffspec)
+            GenPanel.diffspec.A = GenPanel.raw_spec[selections[0]].A-GenPanel.raw_spec[selections[1]].A
+        elif self.typecorr == 'const':
+            GenPanel.diffspec.wl = GenPanel.const_spec[selections[0]].wl
+            GenPanel.diffspec.index = GenPanel.diffspec.wl
+            print(GenPanel.diffspec)
+            GenPanel.diffspec.A = GenPanel.const_spec[selections[0]].A-GenPanel.const_spec[selections[1]].A
+        elif self.typecorr == 'ready':
+            GenPanel.diffspec.wl = GenPanel.ready_spec[selections[0]].wl
+            GenPanel.diffspec.index = GenPanel.diffspec.wl
+            print(GenPanel.diffspec)
+            GenPanel.diffspec.A = GenPanel.ready_spec[selections[0]].A-GenPanel.ready_spec[selections[1]].A
         self.update_right_panel('diff')
-        
+    
+    def on_drop_spec(self, event): #htis should open a Filechooser dialog and remove the 
+        file_chooser = FileChooser(self, "Choose one or more files to drop", None, list(GenPanel.raw_spec.keys()))
+        if file_chooser.ShowModal() == wx.ID_OK:
+            selections = file_chooser.check_list_box.GetCheckedStrings()
+            for i in selections:
+                if len(GenPanel.const_spec.keys()) == len(GenPanel.raw_spec.keys()):
+                    del GenPanel.const_spec[i]
+                    print(f"deleting file(s) {i} from const")
+                elif len(GenPanel.ready_spec.keys()) == len(GenPanel.raw_spec.keys()):
+                    del GenPanel.ready_spec[i]
+                    print(f"deleting file(s) {i} from ready")
+                del GenPanel.raw_spec[i]
+                print(f"deleting files(s) {i} from raw")
+            #this needs to be update panel with the LeftPanel.typercor variable
+            self.update_right_panel(self.typecorr)
+    
     def on_save(self, event):
         wildcard = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
         dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
@@ -536,17 +567,17 @@ class LeftPanel(GenPanel):
             print("File" + file_path + f" '{spec}' saved in: raw_{file_name}.csv in column {spec}")
         towrite_raw_spectra.to_csv('raw_' +  file_name + ".csv", index=True)
         if len(GenPanel.const_spec)==len(GenPanel.raw_spec):
-            towrite_constant_spectra=GenPanel.raw_spec[next(iter(GenPanel.const_spec))].drop(columns=['wl','A'])
+            towrite_constant_spectra=GenPanel.const_spec[next(iter(GenPanel.const_spec))].drop(columns=['wl','A'])
             for spec in GenPanel.const_spec:
                 towrite_constant_spectra[spec]=GenPanel.const_spec[spec].A
                 print("File" + file_path + f" '{spec}' saved in: constant_{file_name}.csv in column {spec}")
-            towrite_raw_spectra.to_csv('constant_' +  file_name + ".csv", index=True)
+            towrite_constant_spectra.to_csv('constant_' +  file_name + ".csv", index=True)
         if len(GenPanel.ready_spec)==len(GenPanel.raw_spec):
             towrite_ready_spectra=GenPanel.raw_spec[next(iter(GenPanel.ready_spec))].drop(columns=['wl','A'])
             for spec in GenPanel.raw_spec:
                 towrite_ready_spectra[spec]=GenPanel.raw_spec[spec].A
                 print("File" + file_path + f" '{spec}' saved in: ready_{file_name}.csv in column {spec}")
-            towrite_raw_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
+            towrite_ready_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
         self.GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
         self.GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
         self.GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
@@ -560,11 +591,13 @@ class LeftPanel(GenPanel):
             scaling_top = float(self.field_topeak.GetValue())
         print(scaling_top)
         self.GetParent().right_panel.plot_data(typecorr, scaling_top)
+        
+
 
 class FileChooser(wx.Dialog):
-    def __init__(self, parent, title, files):
+    def __init__(self, parent, title, numtodrop, files):
         super().__init__(parent, title=title)
-
+        self.numtodrop = numtodrop
         self.files = files
 
         self.check_list_box = wx.CheckListBox(self, choices=self.files)
@@ -573,7 +606,8 @@ class FileChooser(wx.Dialog):
         self.btn_ok.Bind(wx.EVT_BUTTON, self.on_ok)
         self.btn_ok.Enable(False)
         self.btn_cancel = wx.Button(self, wx.ID_CANCEL)
-
+        # self.InitUI()
+        
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_sizer.Add(self.btn_ok)
         btn_sizer.Add(self.btn_cancel)
@@ -588,23 +622,32 @@ class FileChooser(wx.Dialog):
     
     def on_checklistbox(self, event):
         selections = self.check_list_box.GetChecked()
-        self.btn_ok.Enable(len(selections) == 2)
+        if self.numtodrop != None:
+            self.btn_ok.Enable(len(selections) == self.numtodrop)
+        else:
+            self.btn_ok.Enable(len(selections)>0)
 
     def on_ok(self, event):
         self.EndModal(wx.ID_OK)
+    
+    
+    # def InitUI(self): # now this needs to behave differently based on th emenu option chosen
+    #     menubar = wx.MenuBar()
+    #     fileMenu = wx.Menu()
+    #     options = ["raw", "const", "scat"]
+    #     for option in options:
+    #         item = fileMenu.Append(wx.ID_ANY, option)
+    #         self.Bind(wx.EVT_MENU, self.OnOption, item)
+    #     menubar.Append(fileMenu, '&Options')
+    #     self.GetParent().GetParent().GetParent().SetMenuBar(menubar) # this needs to be mapped to the frame
+
+    def OnOption(self, event):
+        selected_option = self.GetMenuBar().FindItemById(event.GetId()).GetLabel()
+        wx.MessageBox("You selected " + selected_option)
 
 class MainFrame(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, title="icOS toolbox", size = (800,600))
-        # self.raw_spec = {}
-        # self.constant_spec = {}
-        # self.ready_spec = {}
-        # self.baseline_blue = 600
-        # self.baseline_red = 800
-        # self.nopeak_blue = 300
-        # self.nopeak_red = 320
-        # self.scaling_top = 500
-
+        wx.Frame.__init__(self, None, title="icOS toolbox", size = (1200,800))
         # Create splitter
         self.splitter = wx.SplitterWindow(self)
         # Create left and right panels
