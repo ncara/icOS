@@ -179,10 +179,10 @@ class RightPanel(GenPanel):
             listmax=[]
             listmin=[]
             for i in GenPanel.ready_spec :
-                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(300,500)].max()
+                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(280,800)].max()
                 if not (mth.isinf(a) | mth.isnan(a)):
                     listmax.append(a)
-                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(300,600)].min()
+                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(280,800)].min()
                 if not (mth.isinf(a) | mth.isnan(a)):
                     listmin.append(a)
             globmax=max(listmax)
@@ -558,7 +558,7 @@ class LeftPanel(GenPanel):
         for spec in GenPanel.raw_spec:
             towrite_raw_spectra[spec]=GenPanel.raw_spec[spec].A
             print("File" + file_path + f" '{spec}' saved in: raw_{file_name}.csv in column {spec}")
-        towrite_raw_spectra.to_csv('raw_' +  file_name + ".csv", index=True)
+        towrite_raw_spectra.to_csv(file_path + 'raw_' +  file_name + ".csv", index=True)
         if len(GenPanel.const_spec)==len(GenPanel.raw_spec):
             towrite_constant_spectra=GenPanel.const_spec[next(iter(GenPanel.const_spec))].drop(columns=['wl','A'])
             for spec in GenPanel.const_spec:
