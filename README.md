@@ -2,15 +2,12 @@
 
 ## Installation
 
-These scripts require the preliminary installation of python 3.__. It uses several packages, only one of which is not a prebuilt and has to be manually installed:
-
-- seaborn (color palette).
-- wxPython (Graphical User Interface library)
+These scripts require the preliminary installation of python 3.8 (not all libraries of wxPython are supported by python3.10 and 3.11). It uses several packages, all of them should automatically install if missing:
 
 For those not able to use wxPython, a plceholder clunkier version using tkinter is available (icOS_toolbox_GUI-nowxPython.py)
 
-The following  packages are used but should be normally shipped with all versions of python.
-
+- seaborn (color palette).
+- wxPython (Graphical User Interface library)
 - pandas
 - matplotlib
 - numpy
@@ -23,10 +20,18 @@ The following  packages are used but should be normally shipped with all version
 
 The GUI implementation uses the same packages as the command line version. It can be executing with the following line:
 
+###Windows
 ```powershell
 cd path_to_script
 python.exe icOS_toolbox_GUI.py
 ```
+
+###Unix based OS
+```bash
+cd path_to_script
+python icOS_toolbox_GUI.py
+```
+
 
 Execution of the script should open the following window: 
 
