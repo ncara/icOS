@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed Jan 18 15:07:56 2023
-
 @author: NCARAMEL
 """
 
@@ -183,12 +182,10 @@ else:
 def fct_baseline(x, a, b):
     """
     A function that takes x values, a, and b and returns the value of a/x^4+b
-
     Parameters:
     x (numpy array): x values
     a (float): The parameter a for the function
     b (float): The parameter b for the function
-
     Returns:
     numpy array: The values of the function evaluated at the given x values
     """
@@ -196,12 +193,10 @@ def fct_baseline(x, a, b):
 def linbase(x,a,b):
     """
     A function that takes x values, a, and b and returns the value of a*x+b
-
     Parameters:
     x (numpy array): x values
     a (float): The parameter a for the function
     b (float): The parameter b for the function
-
     Returns:
     numpy array: The values of the function evaluated at the given x values
     """
@@ -410,6 +405,11 @@ class LeftPanel(GenPanel):
         self.field_baseline_red = wx.TextCtrl(self, style = wx.TE_CENTER, value = '800')
         self.button_constancorr = wx.Button(self, label="Correct for constant baseline")
         self.button_constancorr.Bind(wx.EVT_BUTTON, self.on_constant_corr)
+
+        # scaling ?
+        self.scaling_checkbox = wx.CheckBox(self, label = 'Scaling ?', style = wx.CHK_2STATE)
+        
+        #sizer block
         constboxsizer.Add(self.field_topeak, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
         constboxsizer.Add(self.label_topeak, 1, wx.ALIGN_CENTER, border = 0)
         constboxsizer.Add(self.field_baseline_blue, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
@@ -417,6 +417,8 @@ class LeftPanel(GenPanel):
         constboxsizer.Add(self.field_baseline_red, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
         constboxsizer.Add(self.label_baseline_red, 1, wx.ALIGN_CENTER, border  = 0)
         constboxsizer.Add(self.button_constancorr, 1, wx.EXPAND | wx.ALL, border = 2)
+        constboxsizer.Add(self.scaling_checkbox, 1, wx.ALIGN_CENTER)
+        
         
         #Scattering correction 
         self.StaticBox_scat = wx.StaticBox(self, label = "Scattering Baseline")
@@ -522,12 +524,14 @@ class LeftPanel(GenPanel):
         self.typecorr = 'const'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
-        scaling_top = float(self.field_topeak.GetValue())
-        segmentend=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
+        if self.GetParent().left_panel.scaling_checkbox.GetValue() :  
+            scaling_top = float(self.field_topeak.GetValue())
         for i in GenPanel.raw_spec:
+            segmentend=GenPanel.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
             tmp=GenPanel.raw_spec[i].copy()
             tmp.A-=mean(GenPanel.raw_spec[i].A[segmentend])
-            tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
+            if self.GetParent().left_panel.scaling_checkbox.GetValue() :
+                tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
             tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
                                window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
                                polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
@@ -540,17 +544,11 @@ class LeftPanel(GenPanel):
         self.typecorr = 'ready'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
-        scaling_top = float(self.field_topeak.GetValue())
+        if self.GetParent().left_panel.scaling_checkbox.GetValue() :  
+            scaling_top = float(self.field_topeak.GetValue())
         nopeak_blue = float(self.field_nopeak_blue.GetValue())
         nopeak_red = float(self.field_nopeak_red.GetValue())
-        rightborn=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].A[GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(200,250)].idxmax()+20
-        leftborn=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].A[GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(200,250)].idxmax()
-        segment1 = GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(leftborn,rightborn, inclusive='both')
-        segment2 = GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(nopeak_blue,nopeak_red, inclusive='both')
-        segmentend=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].wl.between(baseline_blue,baseline_red, inclusive='both')
-        segment=segment1+segment2+segmentend
-        #peakless visible segment
-        sigmafor3segment=[float(self.field_weighUV.GetValue()),float(self.field_weighpeakless.GetValue()),float(self.field_weighbaseline.GetValue())]
+        
         n=0
         # this plots each fitted baseline against the raw data, highlighting the chose segments
         for i in GenPanel.raw_spec :
@@ -558,6 +556,16 @@ class LeftPanel(GenPanel):
             tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
                                           window_length=21,
                                           polyorder=3)
+            rightborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()+20
+            leftborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()
+            segment1 = GenPanel.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
+            segment2 = GenPanel.raw_spec[i].wl.between(nopeak_blue,nopeak_red, inclusive='both')
+            segmentend=GenPanel.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
+            segment=segment1+segment2+segmentend
+            #peakless visible segment
+            sigmafor3segment=[float(self.field_weighUV.GetValue()),float(self.field_weighpeakless.GetValue()),float(self.field_weighbaseline.GetValue())]
+            
+            
             x=tmp.wl[segment].copy()
             y=tmp.A[segment].copy()
             initialParameters = np.array([1e9,1])
@@ -572,7 +580,8 @@ class LeftPanel(GenPanel):
             baseline.A=fct_baseline(baseline.wl.copy(), *para)
             corrected=tmp.copy()
             corrected.A=tmp.A.copy()-baseline.A
-            corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
+            if self.GetParent().left_panel.scaling_checkbox.GetValue() :
+                corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
             GenPanel.ready_spec[i]=corrected
             # tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
             vars()['fig' + str(n)], vars()['ax' + str(n)] = plt.subplots()
@@ -802,14 +811,14 @@ class FileChooser(wx.Dialog):
 
 class MainFrame(wx.Frame):
     def __init__(self):
-        wx.Frame.__init__(self, None, title="icOS toolbox", size = (1200,800))
+        wx.Frame.__init__(self, None, title="icOS toolbox", size = (1400,1000))
         # Create splitter
         self.splitter = wx.SplitterWindow(self)
         # Create left and right panels
         self.splitter.left_panel = LeftPanel(self.splitter)
         self.splitter.right_panel = RightPanel(self.splitter)
         # Add panels to splitter
-        self.splitter.SplitVertically(self.splitter.left_panel, self.splitter.right_panel, 200)
+        self.splitter.SplitVertically(self.splitter.left_panel, self.splitter.right_panel, 350)
         self.splitter.SetSashGravity(0.5)
         # Set main sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
