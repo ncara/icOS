@@ -461,6 +461,8 @@ class LeftPanel(GenPanel):
         self.field_nopeak_blue = wx.TextCtrl(self, style = wx.TE_CENTER)
         self.label_nopeak_red = wx.StaticText(self, label="red-side boundary of the peakless segment", style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_nopeak_red = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.label_leeway_factor = wx.StaticText(self, label="expected OD in the segment (% max peak)", style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_leeway_factor = wx.TextCtrl(self, style = wx.TE_CENTER)
         # diagnostic plots ?
         self.diagplots_checkbox = wx.CheckBox(self, label = 'no diagnostic plots ?', style = wx.CHK_2STATE)
         
@@ -496,6 +498,11 @@ class LeftPanel(GenPanel):
         scatboxsizer.Add(self.label_nopeak_blue, 0, wx.ALIGN_CENTER, border = 0)
         scatboxsizer.Add(self.field_nopeak_red, 0, wx.ALIGN_CENTER | wx.ALL, border = 0)
         scatboxsizer.Add(self.label_nopeak_red, 0, wx.ALIGN_CENTER, border = 0)
+        scatboxsizer.Add(self.label_leeway_factor, 0, wx.ALIGN_CENTER, border = 0)
+        scatboxsizer.Add(self.field_leeway_factor, 0, wx.ALIGN_CENTER | wx.ALL, border = 0)
+        
+        
+        
         # scatboxsizer.AddSpacer(5)
         scatboxsizer.Add(divboxsizer, 1, wx.EXPAND, border = 5)
         scatboxsizer.Add(self.button_scattercor, 1, wx.EXPAND | wx.ALL, border = 2)
@@ -541,7 +548,8 @@ class LeftPanel(GenPanel):
             for file_path in file_paths:
                 file_name = file_path.split('/')[-1][0:-4]
                 print(file_name)
-                GenPanel.raw_spec[file_name] = pd.read_csv(filepath_or_buffer= file_path,
+                if file_path[-4:] == '.txt':
+                    GenPanel.raw_spec[file_name] = pd.read_csv(filepath_or_buffer= file_path,
                               sep= "\t",
                               decimal=".",
                               skiprows=17,
@@ -579,6 +587,7 @@ class LeftPanel(GenPanel):
         self.typecorr = 'ready'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
+        leewayfac= float(self.field_leeway_factor.GetValue())
         if self.GetParent().left_panel.scaling_checkbox.GetValue() :  
             scaling_top = float(self.field_topeak.GetValue())
         nopeak_blue = float(self.field_nopeak_blue.GetValue())
@@ -600,16 +609,19 @@ class LeftPanel(GenPanel):
             segment=segment1+segment2+segmentend
             #peakless visible segment
             sigmafor3segment=[float(self.field_weighUV.GetValue()),float(self.field_weighpeakless.GetValue()),float(self.field_weighbaseline.GetValue())]
-            
-            
-            x=tmp.wl[segment].copy()
-            y=tmp.A[segment].copy()
+            forfit=tmp.copy()
+            if self.GetParent().left_panel.scaling_checkbox.GetValue() :  
+                forfit.A[segment2]-=leewayfac*forfit.A[scaling_top-10:scaling_top+10].max()
+            else :
+                forfit.A[segment2]-=leewayfac*forfit.A[310:800].max()
+            x=forfit.wl[segment].copy()
+            y=forfit.A[segment].copy()
             initialParameters = np.array([1e9,1])
-            m=len(tmp.A[segment1])
+            m=len(forfit.A[segment1])
             sigma=m*[sigmafor3segment[0]]
-            m=len(tmp.A[segment2])
+            m=len(forfit.A[segment2])
             sigma=sigma + m*[sigmafor3segment[1]]
-            m=len(tmp.A[segmentend])
+            m=len(forfit.A[segmentend])
             sigma=sigma + m*[sigmafor3segment[2]]
             para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
             baseline=tmp.copy()
@@ -774,9 +786,9 @@ class LeftPanel(GenPanel):
                 print("File" + file_path + f" '{spec}' saved in: constant_{file_name}.csv in column {spec}")
             towrite_constant_spectra.to_csv(file_path + 'constant_' +  file_name + ".csv", index=True)
         if len(GenPanel.ready_spec)==len(GenPanel.raw_spec):
-            towrite_ready_spectra=GenPanel.raw_spec[next(iter(GenPanel.ready_spec))].drop(columns=['wl','A'])
-            for spec in GenPanel.raw_spec:
-                towrite_ready_spectra[spec]=GenPanel.raw_spec[spec].A
+            towrite_ready_spectra=GenPanel.ready_spec[next(iter(GenPanel.ready_spec))].drop(columns=['wl','A'])
+            for spec in GenPanel.ready_spec:
+                towrite_ready_spectra[spec]=GenPanel.ready_spec[spec].A
                 print("File" + file_path + f" '{spec}' saved in: ready_{file_name}.csv in column {spec}")
             towrite_ready_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
         self.GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
