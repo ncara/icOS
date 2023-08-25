@@ -251,18 +251,25 @@ class RightPanel(GenPanel):
                 if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                     ax.plot(GenPanel.raw_spec[i].wl,                  
                         GenPanel.raw_spec[i].A ,                   
-                        linewidth=1,                    
+                        linewidth=2,                    
                        
                         label=i +" mass center = " +format(centroids[i], '.3f'), 
                         color=palette[n]) 
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
                 else:
-                    ax.plot(GenPanel.raw_spec[i].wl,                  
-                            GenPanel.raw_spec[i].A ,                   
-                            linewidth=1,                    
-                           
-                            label=i +" mass center = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5)].A.idxmax(), '.3f'), 
-                            color=palette[n])  
+                                        
+                            if self.GetParent().left_panel.scaling_checkbox.GetValue() :
+                                ax.plot(GenPanel.raw_spec[i].wl,                  
+                                        GenPanel.raw_spec[i].A ,                   
+                                        linewidth=2,
+                                        label=i +" max abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5)].A.idxmax(), '.3f'), 
+                                        color=palette[n])  
+                            else :
+                                ax.plot(GenPanel.raw_spec[i].wl,                  
+                                        GenPanel.raw_spec[i].A ,                   
+                                        linewidth=2,
+                                        label=i +" max abs = " +format(GenPanel.raw_spec[i].A.idxmax(), '.3f'), 
+                                        color=palette[n])    
                 n=n+1
             ax.set_title('raw in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
             ax.set_xlim([250, 800])
@@ -299,16 +306,23 @@ class RightPanel(GenPanel):
                 if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                     ax.plot(GenPanel.const_spec[i].wl,
                         GenPanel.const_spec[i].A ,
-                        linewidth=1,
+                        linewidth=2,
                         label=i+" mass center = " +format(centroids[i], '.3f'),
                         color=palette[n])
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
                 else :
-                    ax.plot(GenPanel.const_spec[i].wl,
-                            GenPanel.const_spec[i].A ,
-                            linewidth=1,
-                            label=i+"Max abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
-                            color=palette[n])
+                    if self.GetParent().left_panel.scaling_checkbox.GetValue() :
+                        ax.plot(GenPanel.const_spec[i].wl,
+                                GenPanel.const_spec[i].A ,
+                                linewidth=2,
+                                label=i+"Max abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
+                                color=palette[n])
+                    else :
+                        ax.plot(GenPanel.const_spec[i].wl,
+                                GenPanel.const_spec[i].A ,
+                                linewidth=2,
+                                label=i+"Max abs peak ="+format(GenPanel.const_spec[i].A.idxmax(), '.2f'),
+                                color=palette[n])
                 n=n+1
             ax.set_title('only scaled in crystallo absorbance spectra (no scattering correction)', fontsize=10, fontweight='bold')
             ax.set_xlim([200, 875])
@@ -342,16 +356,23 @@ class RightPanel(GenPanel):
                 if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                     ax.plot(GenPanel.ready_spec[i].wl,                  
                           GenPanel.ready_spec[i].A ,                   
-                          linewidth=1,
+                          linewidth=2,
                           label=i +" mass center = " +format(centroids[i], '.3f'), 
                           color=palette[n]) 
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
                 else :
-                    ax.plot(GenPanel.ready_spec[i].wl,                  
-                              GenPanel.ready_spec[i].A ,                   
-                              linewidth=1,
-                              label=i +" mass center = " +format(GenPanel.ready_spec[i][GenPanel.ready_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
-                              color=palette[n]) 
+                    if self.GetParent().left_panel.scaling_checkbox.GetValue() :
+                        ax.plot(GenPanel.ready_spec[i].wl,                  
+                                GenPanel.ready_spec[i].A ,                   
+                                linewidth=2,
+                                label=i +" mass center = " +format(GenPanel.ready_spec[i][GenPanel.ready_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
+                                color=palette[n]) 
+                    else :
+                        ax.plot(GenPanel.ready_spec[i].wl,                  
+                                GenPanel.ready_spec[i].A ,                   
+                                linewidth=2,
+                                label=i +" mass center = " +format(GenPanel.ready_spec[i].A.idxmax(), '.2f'), 
+                                color=palette[n]) 
                 n=n+1
             ax.set_title('scattering corrected in crystallo absorbance spectra', fontsize=10, fontweight='bold')  
             ax.set_xlim([250, 800])
@@ -369,16 +390,18 @@ class RightPanel(GenPanel):
             if self.GetParent().left_panel.mass_center_checkbox.GetValue() :
                 ax.plot(GenPanel.diffspec.wl,                  
                       GenPanel.diffspec.A ,                   
-                      linewidth=1,
+                      linewidth=2,
                       label=i +" mass center = " +format(centroids[i], '.3f'), 
                       color=palette[n]) 
                 ax.axvline(centroids[i], color = palette[n], ls = '-.')
             else :
-                ax.plot(GenPanel.diffspec.wl,                  
-                          GenPanel.diffspec.A ,                   
-                          linewidth=1,
-                          label=" mass center = " +format(GenPanel.diffspec[GenPanel.diffspec.wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
-                          color=palette[n]) 
+                if self.GetParent().left_panel.scaling_checkbox.GetValue() :
+                    ax.plot(GenPanel.diffspec.wl,                  
+                            GenPanel.diffspec.A ,                   
+                            linewidth=2,
+                            label=" mass center = " +format(GenPanel.diffspec[GenPanel.diffspec.wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'), 
+                            color=palette[n]) 
+                    
             n=n+1
             ax.set_title('difference in crystallo absorbance spectrum', fontsize=10, fontweight='bold')  
             ax.set_xlim([250, 800])
@@ -411,6 +434,9 @@ class LeftPanel(GenPanel):
 
         # scaling ?
         self.scaling_checkbox = wx.CheckBox(self, label = 'Scaling ?', style = wx.CHK_2STATE)
+        # smoothing ?
+        self.smoothing_checkbox = wx.CheckBox(self, label = 'Smoothing ?', style = wx.CHK_2STATE)
+        
         
         #sizer block
         constboxsizer.Add(self.field_topeak, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
@@ -420,7 +446,10 @@ class LeftPanel(GenPanel):
         constboxsizer.Add(self.field_baseline_red, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
         constboxsizer.Add(self.label_baseline_red, 1, wx.ALIGN_CENTER, border  = 0)
         constboxsizer.Add(self.button_constancorr, 1, wx.EXPAND | wx.ALL, border = 2)
-        constboxsizer.Add(self.scaling_checkbox, 1, wx.ALIGN_CENTER)
+        checkboxsizer= wx.BoxSizer(wx.HORIZONTAL)
+        checkboxsizer.Add(self.scaling_checkbox, 1, wx.ALIGN_CENTER)
+        checkboxsizer.Add(self.smoothing_checkbox, 1, wx.ALIGN_CENTER)
+        constboxsizer.Add(checkboxsizer, 1, wx.EXPAND , border = 5)
         
         
         #Scattering correction 
@@ -537,9 +566,10 @@ class LeftPanel(GenPanel):
             tmp.A-=mean(GenPanel.raw_spec[i].A[segmentend])
             if self.GetParent().left_panel.scaling_checkbox.GetValue() :
                 tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-10,scaling_top+10,inclusive='both')].max()
-            tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                               window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
-                               polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+            if self.GetParent().left_panel.smoothing_checkbox.GetValue() :
+                tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                                              window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                                              polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
             GenPanel.const_spec[i]=tmp.copy()
             GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
             print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
@@ -558,9 +588,10 @@ class LeftPanel(GenPanel):
         # this plots each fitted baseline against the raw data, highlighting the chose segments
         for i in GenPanel.raw_spec :
             tmp=GenPanel.raw_spec[i].copy()
-            tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),
-                                          window_length=21,
-                                          polyorder=3)
+            if self.GetParent().left_panel.smoothing_checkbox.GetValue() :
+                tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                                              window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                                              polyorder=3)
             rightborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()+20
             leftborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()
             segment1 = GenPanel.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
