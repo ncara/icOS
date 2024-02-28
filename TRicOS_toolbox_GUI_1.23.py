@@ -1069,7 +1069,7 @@ class LeftPanel(GenPanel):
             for i in totalpath.split(dirsep)[:-1]:
                 file_path+=i+dirsep
             print(file_path)
-            file_name = totalpath.split(dirsep)[-1][0:-4]
+            file_name = totalpath.split(dirsep)[-1]
                 
         dialog.Destroy()
         towrite_raw_spectra=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].drop(columns=['wl','A'])
