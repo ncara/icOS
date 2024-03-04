@@ -353,16 +353,16 @@ class RightPanel(GenPanel):
             print('plotting raw data')
             listmax=[]
             listmin=[]
-            for i in GenPanel.raw_spec :
-                a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(320,800)].max()
-                if not (mth.isinf(a) | mth.isnan(a)):
-                    listmax.append(a)
-                a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(320,800)].min()
-                if not (mth.isinf(a) | mth.isnan(a)):
-                    listmin.append(a)
+            # for i in GenPanel.raw_spec :
+            #     a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(320,800)].max()
+            #     if not (mth.isinf(a) | mth.isnan(a)):
+            #         listmax.append(a)
+            #     a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(320,800)].min()
+            #     if not (mth.isinf(a) | mth.isnan(a)):
+            #         listmin.append(a)
                     
-            globmax=max(listmax)
-            globmin=min(listmin)
+            # globmax=max(listmax)
+            # globmin=min(listmin)
             ax.set_xlabel('Wavelength [nm]', fontsize=35)  
             ax.xaxis.set_label_coords(x=0.5, y=-0.1)      
             ax.set_ylabel('Absorbance [AU]', fontsize=35)               
@@ -384,7 +384,7 @@ class RightPanel(GenPanel):
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
                 else:
                                         
-                            if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
+                            if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top != 0 :
                                 tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
                                 ax.plot(GenPanel.raw_spec[i].wl,                  
                                         tmp ,                   
@@ -394,6 +394,15 @@ class RightPanel(GenPanel):
                                 # if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
                                 #     for spec in GenPanel.raw_spec:
                                 #         GenPanel.raw_spec[spec].A *=1/GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
+                            elif self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top == 0 :
+                                tmp_scaling_top = float(GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(300,800,inclusive='both')].idxmax())
+                                print(tmp_scaling_top)
+                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(tmp_scaling_top-5,tmp_scaling_top+5,inclusive='both')].mean()
+                                ax.plot(GenPanel.raw_spec[i].wl,                  
+                                        tmp ,                   
+                                        linewidth=4,
+                                        label=i +" max abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(tmp_scaling_top-5,tmp_scaling_top+5)].A.idxmax(), '.3f'), 
+                                        color=palette[n]) 
                             else :
                                 ax.plot(GenPanel.raw_spec[i].wl,                  
                                         GenPanel.raw_spec[i].A ,                   
@@ -405,7 +414,7 @@ class RightPanel(GenPanel):
                 ax.set_title('raw in crystallo absorbance spectra', fontsize=35, fontweight='bold')
                 ax.legend(loc='upper right', shadow=True, prop={'size':8})
             ax.set_xlim([250, 1000])
-            ax.set_ylim([globmin-0.05, globmax+0.1])
+            # ax.set_ylim([globmin-0.05, globmax+0.1])
             ax.tick_params(labelsize=30)
             self.canvas.draw()
         
@@ -442,7 +451,7 @@ class RightPanel(GenPanel):
                         color=palette[n])
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
                 else :
-                    if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
+                    if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() and scaling_top != 0 :
                         ax.plot(GenPanel.const_spec[i].wl,
                                 GenPanel.const_spec[i].A ,
                                 linewidth=4,
@@ -494,7 +503,7 @@ class RightPanel(GenPanel):
                           color=palette[n]) 
                     ax.axvline(centroids[i], color = palette[n], ls = '-.')
                 else :
-                    if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
+                    if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() and scaling_top != 0 :
                         ax.plot(GenPanel.ready_spec[i].wl,                  
                                 GenPanel.ready_spec[i].A ,                   
                                 linewidth=4,
@@ -1155,7 +1164,12 @@ class TabOne(wx.Panel):
             tmp=GenPanel.raw_spec[i].copy()
             tmp.A-=mean(GenPanel.raw_spec[i].A[segmentend])
             if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
-                tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
+                if scaling_top == 0 : 
+                    tmp_scaling_top=float(tmp.A[tmp.wl.between(300,800,inclusive='both')].idxmax())
+                    print(tmp_scaling_top)
+                    tmp.A*=1/tmp.A[tmp.wl.between(tmp_scaling_top-5,tmp_scaling_top+5,inclusive='both')].mean()
+                else:
+                    tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
                                               window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
@@ -1211,7 +1225,12 @@ class TabOne(wx.Panel):
             corrected=tmp.copy()
             corrected.A=tmp.A.copy()-baseline.A
             if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
-                corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
+                if scaling_top == 0 : 
+                    scaling_top=corrected.A[corrected.wl.between(300,800,inclusive='both')].max()
+                    corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
+                else:
+                    corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
+                
             GenPanel.ready_spec[i]=corrected
             # tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
             if not self.GetParent().GetParent().tab1.diagplots_checkbox.GetValue() : 
