@@ -10,7 +10,7 @@ Created on Wed Jan 18 15:07:56 2023
 @author: NCARAMEL
 """
 import warnings
-warnings.filterwarnings("ignore")
+warnings.simplefilter("ignore")
 import importlib
 
 #instlaling packages if not present 
@@ -357,7 +357,7 @@ class RightPanel(GenPanel):
                 a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(320,800)].max()
                 if not (mth.isinf(a) | mth.isnan(a)):
                     listmax.append(a)
-                a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(800,900)].min()
+                a=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(320,800)].min()
                 if not (mth.isinf(a) | mth.isnan(a)):
                     listmin.append(a)
                     
@@ -417,7 +417,7 @@ class RightPanel(GenPanel):
                 a=GenPanel.const_spec[i].A[GenPanel.const_spec[i].wl.between(320,800)].max()
                 if not mth.isinf(a) | mth.isnan(a):
                     listmax.append(a)
-                a=GenPanel.const_spec[i].A[GenPanel.const_spec[i].wl.between(800,900)].min()
+                a=GenPanel.const_spec[i].A[GenPanel.const_spec[i].wl.between(320,800)].min()
                 if not mth.isinf(a) | mth.isnan(a):
                     listmin.append(a)
             globmax=max(listmax)
@@ -472,7 +472,7 @@ class RightPanel(GenPanel):
                 a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(320,800)].max()
                 if not (mth.isinf(a) | mth.isnan(a)):
                     listmax.append(a)
-                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(800,900)].min()
+                a=GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(320,800)].min()
                 if not (mth.isinf(a) | mth.isnan(a)):
                     listmin.append(a)
             globmax=max(listmax)
@@ -602,13 +602,13 @@ class RightPanel(GenPanel):
             ax.xaxis.set_label_coords(x=0.5, y=-0.1)      
             ax.set_ylabel('Abs', fontsize=35)               
             ax.yaxis.set_label_coords(x=-0.14, y=0.5)       
-            palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.raw_spec)-1)   
+            palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.raw_spec))   
             for i in range(0,len(GenPanel.raw_spec)-1):
                 # tmp['SVn'+str(i)]=self.scaled_time_factors[i]
                 ax.plot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl),self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i], 
                         linewidth=4,                    
                         label='SV n° ' + str(i) ,
-                        color=palette[i])               
+                        color=palette[i+1])               
             ax.tick_params(labelsize=30)
             if not self.GetParent().left_panel.tab1.titlegend_checkbox.GetValue() :
                 # ax.legend(loc='upper right', shadow=True, prop={'size':8})
@@ -632,23 +632,22 @@ class RightPanel(GenPanel):
             ax.xaxis.set_label_coords(x=0.5, y=-0.1)      
             ax.set_ylabel('Abs', fontsize=35)               
             ax.yaxis.set_label_coords(x=-0.14, y=0.5)       
-            palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.diffserie)) 
+            palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.diffserie)+1) 
             i=0
             for spec in GenPanel.diffserie : 
                 ax.plot(GenPanel.diffserie[spec].wl, 
                         GenPanel.diffserie[spec].A,
                         linewidth=4,                    
                         label=spec + '- dark',
-                        color=palette[i]) 
+                        color=palette[i+1]) 
                 i+=1
             
             ax.tick_params(labelsize=30)
             ax.set_xlim([280,850])
             ax.set_ylim([globmin-0.05, globmax+0.05])
             if not self.GetParent().left_panel.tab1.titlegend_checkbox.GetValue() :
-                # ax.legend(loc='upper right', shadow=True, prop={'size':8})
-                ax.set_title('light - dark diff specs', fontsize=35, fontweight='bold')  
-                legend = plt.legend(loc='upper right', shadow=True, prop={'size':10})
+                ax.legend(loc='upper right', shadow=True, prop={'size':10})
+                ax.set_title('light - dark diff specs', fontsize=35, fontweight='bold')
             self.canvas.draw()
             
 
@@ -1577,15 +1576,14 @@ class TabTwo(wx.Panel):
         ax.xaxis.set_label_coords(x=0.5, y=-0.13)      
         ax.set_ylabel('Magnitude', fontsize=35)               
         ax.yaxis.set_label_coords(x=-0.12, y=0.5)       
-        palette=sns.color_palette(palette='Spectral', n_colors=len(S))   
+        palette=sns.color_palette(palette='Spectral', n_colors=len(S)+1)   
         for i in range(0,n):
             ax.scatter(GenPanel.list_spec.time_code[1:],self.scaled_time_factors[i], 
                     # marker='o',
                     linewidths=10,                    
                     label='SV n° ' + str(i),
-                    color=palette[i]) 
-                     
-
+                    color=palette[i+1])
+            
         file_chooser = FileChooser(self, "Do you want the plot in log scale", 1, ['linear scale', 'log scale'])
         if file_chooser.ShowModal() == wx.ID_OK:
             self.logscale=file_chooser.check_list_box.GetCheckedStrings()[0]
@@ -1595,30 +1593,11 @@ class TabTwo(wx.Panel):
         # ax.xaxis.set_ticks(list(ordered_files.index))
         ax.tick_params(labelsize=30)
         if self.GetParent().GetParent().tab1.titlegend_checkbox.GetValue() :
-            legend = plt.legend(loc='upper right', shadow=True, prop={'size':12})
+            ax.legend(loc='upper right', shadow=True, prop={'size':12})
         fig.show()
+        fig.savefig("SVD-time.png", dpi=900, transparent=True,bbox_inches='tight')
+        fig.savefig("SVD-time.svg", dpi=900, transparent=True,bbox_inches='tight')
         
-        
-        
-        
-        # fig, ax = plt.subplots()     
-        # ax.set_xlabel('Wavelength', fontsize=35)  
-        # ax.xaxis.set_label_coords(x=0.5, y=-0.08)      
-        # ax.set_ylabel('Abs', fontsize=35)               
-        # ax.yaxis.set_label_coords(x=-0.04, y=0.5)       
-        # palette=sns.color_palette(palette='Spectral', n_colors=len(S))   
-        # for i in range(0,n):
-        #     # tmp['SVn'+str(i)]=self.scaled_time_factors[i]
-        #     ax.plot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl),self.scaled_spec_lSV[:,i], 
-        #             linewidth=4,                    
-        #             label='SV n° ' + str(i) ,
-        #             color=palette[i])               
-
-        # file_chooser = FileChooser(self, "Do you want the plot in log scale", 1, ['linear scale', 'log scale'])
-        # ax.tick_params(labelsize=30)
-        # if self.GetParent().GetParent().tab1.titlegend_checkbox.GetValue() :
-        #     legend = plt.legend(loc='upper right', shadow=True, prop={'size':12})
-        # fig.show()
         self.update_right_panel('SVD')
         
     def on_save(self, event):
