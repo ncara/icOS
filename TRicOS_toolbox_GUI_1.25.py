@@ -200,6 +200,49 @@ if system == "Windows":
 else:
     path = os.path.join("/", "path", "to", "save", "output")
 
+
+import numpy as np  # Importing numpy library for mathematical operations
+
+def full_correction(x, a, b, c, d, e):
+    """
+    This function calculates a reflection coefficient using the given parameters.
+
+    Parameters:
+    - x: Input value for the function
+    - a, b, c, d, e: Coefficients for the reflection calculation
+
+    Returns:
+    - Reflection coefficient calculated based on the given formula
+
+    Formula:
+    The function computes the reflection coefficient using the following formula:
+    (e/(x^4)) + |((a + b/(x^2)) - (c + d/(x^2))) / ((a + b/(x^2)) + (c + d/(x^2)))|^2
+    where '^' denotes exponentiation and '|' denotes absolute value.
+    """
+
+    # Calculating the reflection coefficient using the provided formula
+    reflection_coefficient = (e / (np.power(x, 4))) + np.power(
+        np.abs(((a + b / np.power(x, 2)) - (c + d / np.power(x, 2))) /
+               ((a + b / np.power(x, 2)) + (c + d / np.power(x, 2)))), 2)
+
+    return reflection_coefficient
+
+
+def custom_correction(x, a, b, n):
+    """
+    A function that models a custom baseline
+    Parameters:
+    x (numpy array): x values
+    a (float): The parameter a for the function
+    b (float): The parameter b for the function
+    n (float): The power for the function fitted, usually starts at 4
+    Returns:
+    numpy array: The values of the function evaluated at the given x values
+    """
+    return a/np.power(x,n)+b
+
+
+
 def fct_baseline(x, a, b):
     """
     A function that takes x values, a, and b and returns the value of a/x^4+b
@@ -222,23 +265,6 @@ def linbase(x,a,b):
     numpy array: The values of the function evaluated at the given x values
     """
     return a*x+b
-# def absorbance(tmp):
-#     ourdata=tmp.copy()
-#     if 'A' in ourdata.columns :
-#         return(ourdata.drop(columns=['I','bgd',"I0"]).copy())
-#         print('avantes absorbance saved for spectrum')
-#     else :
-#         ourdata['absor']=None
-#         for wl in ourdata.index:
-#             tmpdat=float(ourdata.I[wl] - ourdata.bgd[wl])
-#             tmpref=float(ourdata.I0[wl] - ourdata.bgd[wl])
-#             if tmpdat/tmpref < 0:
-#                 tmpabs=0
-#             else :
-#                 tmpabs=-np.log(tmpdat/tmpref)
-#             # dfmi.loc['wl'=, 'absor']
-#             ourdata.loc[wl,'A']=tmpabs
-#         return(ourdata.drop(columns=['I','bgd',"I0"]).copy())
 
 
 def absorbance(tmp):
@@ -285,15 +311,6 @@ def absorbance(tmp):
 
 floatize=np.vectorize(float)   
 
-# def longest_digit_sequence(input_string):
-#     # Use regular expression to find all digit sequences in the string
-#     digit_sequences = re.findall(r'\d+', input_string)
-    
-#     # Find the longest digit sequence
-#     longest_sequence = max(digit_sequences, key=len, default=None)
-    
-#     return longest_sequence
-
 
 def longest_digit_sequence(input_string):
     """
@@ -326,6 +343,8 @@ class GenPanel(wx.Panel):
     diffspec = pd.DataFrame(data=None,columns=['wl','A'])
     list_spec = pd.DataFrame(data=None, columns = ['file_name','time_code','abs'])
     list_spec.index = list_spec.file_name
+    smoothing='savgol'
+    correction='full'
     
     
     
@@ -614,7 +633,7 @@ class RightPanel(GenPanel):
             palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.raw_spec))   
             for i in range(0,len(GenPanel.raw_spec)-1):
                 # tmp['SVn'+str(i)]=self.scaled_time_factors[i]
-                ax.plot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl),self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i], 
+                ax.plot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]),self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i], 
                         linewidth=4,                    
                         label='SV n° ' + str(i) ,
                         color=palette[i+1])               
@@ -622,7 +641,7 @@ class RightPanel(GenPanel):
             if not self.GetParent().left_panel.tab1.titlegend_checkbox.GetValue() :
                 # ax.legend(loc='upper right', shadow=True, prop={'size':8})
                 ax.set_title('left Singular Vectors', fontsize=35, fontweight='bold')  
-                legend = plt.legend(loc='upper right', shadow=True, prop={'size':10})
+                ax.legend(loc='upper right', shadow=True, prop={'size':10})
             self.canvas.draw()
         elif typecorr == 'diffserie' :
             listmax=[]
@@ -658,7 +677,29 @@ class RightPanel(GenPanel):
                 ax.legend(loc='upper right', shadow=True, prop={'size':10})
                 ax.set_title('light - dark diff specs', fontsize=35, fontweight='bold')
             self.canvas.draw()
-            
+        elif typecorr == 'quality_plot':
+            chosen_spectrum = self.GetParent().left_panel.tab3.selection
+            print('plotting raw data')
+            ax.set_xlabel('Wavelength [nm]', fontsize=35)  
+            ax.xaxis.set_label_coords(x=0.5, y=-0.1)      
+            ax.set_ylabel('Absorbance [AU]', fontsize=35)               
+            ax.yaxis.set_label_coords(x=-0.14, y=0.5)       
+            ax.scatter(GenPanel.raw_spec[chosen_spectrum].wl,                  
+                        GenPanel.raw_spec[chosen_spectrum].A ,                   
+                        linewidth=4,                    
+                        label='Confidence score for ' + chosen_spectrum,
+                        c=GenPanel.raw_lamp[chosen_spectrum].I0, 
+                        cmap='coolwarm_r', 
+                        vmin=1500, vmax=20000,
+                        alpha=0.7) 
+                    # ax.axvline(centroids[i], color = palette[n], ls = '-.')
+            if not self.GetParent().left_panel.tab1.titlegend_checkbox.GetValue() :
+                ax.set_title('Quality score', fontsize=35, fontweight='bold')
+                ax.legend(loc='upper right', shadow=True, prop={'size':8})
+            ax.set_xlim([250, 1000])
+            ax.set_ylim([GenPanel.raw_spec[chosen_spectrum][GenPanel.raw_spec[chosen_spectrum].wl.between(300,800)].A.min()-0.05, GenPanel.raw_spec[chosen_spectrum][GenPanel.raw_spec[chosen_spectrum].wl.between(300,800)].A.max()+0.1])
+            ax.tick_params(labelsize=30)
+            self.canvas.draw()
 
 class MainFrame(wx.Frame):
     def __init__(self):
@@ -699,11 +740,11 @@ class LeftPanel(wx.Panel):
         # Create tabs
         self.tab1 = TabOne(self.notebook)
         self.tab2 = TabTwo(self.notebook)
-        
+        self.tab3 = TabThree(self.notebook)
         # Add tabs to notebook
         self.notebook.AddPage(self.tab1, "Main")
         self.notebook.AddPage(self.tab2, "Kinetic")
-        
+        self.notebook.AddPage(self.tab3, "Expert Settings")
         # Set sizer for notebook
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.notebook, 1, wx.EXPAND)
@@ -724,6 +765,7 @@ class TabOne(wx.Panel):
         
         # checkbox for TR-icOS data
         #TODO change that to be a rollout menu that can iterate between icOS ; TRicOS and Fluo with a third option being 'user supplied'
+        self.bigsizer_checkboxes = wx.BoxSizer(wx.VERTICAL)
         self.sizer_checkboxes = wx.BoxSizer(wx.HORIZONTAL)        
         self.TRicOS_checkbox = wx.CheckBox(self, label = 'TR-icOS data ?', style = wx.CHK_2STATE)
         self.FLUO_checkbox = wx.CheckBox(self, label = 'Fluorescence data ?', style = wx.CHK_2STATE)
@@ -731,6 +773,23 @@ class TabOne(wx.Panel):
         self.sizer_checkboxes.Add(self.TRicOS_checkbox, flag=wx.ALL, border=3)
         self.sizer_checkboxes.Add(self.FLUO_checkbox, flag=wx.ALL, border=3)
         self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
+        
+        
+        self.bigsizer_checkboxes.Add(self.sizer_checkboxes, 1, wx.ALIGN_CENTER)
+        
+        self.sizer_checkboxes_2 = wx.BoxSizer(wx.HORIZONTAL)    
+        # scaling ?
+        self.scaling_checkbox = wx.CheckBox(self, label = 'Scaling ?', style = wx.CHK_2STATE)
+        # constchecksizer.Add(self.scaling_checkbox, wx.ALIGN_CENTER | wx.ALL)# border = 2)
+        # smoothing ?
+        self.smoothing_checkbox = wx.CheckBox(self, label = 'Smoothing ?', style = wx.CHK_2STATE)
+        # constchecksizer.Add(self.smoothing_checkbox, wx.ALIGN_CENTER | wx.ALL)# border = 2)
+        self.sizer_checkboxes_2.Add(self.scaling_checkbox, flag=wx.ALL, border=3)
+        self.sizer_checkboxes_2.Add(self.smoothing_checkbox, flag=wx.ALL, border=3)
+        self.bigsizer_checkboxes.Add(self.sizer_checkboxes_2, 1, wx.ALIGN_CENTER)
+        
+        
+        
         # print raw data again
         self.button_rawdat = wx.Button(self, label="Back to raw data")
         self.button_rawdat.Bind(wx.EVT_BUTTON, self.backtoraw)
@@ -764,18 +823,15 @@ class TabOne(wx.Panel):
         self.button_constancorr = wx.Button(self, label="Correct for constant baseline")
         self.button_constancorr.Bind(wx.EVT_BUTTON, self.on_constant_corr)
         
-        constchecksizer=wx.BoxSizer(wx.HORIZONTAL)
-        constchecksizer.Add(self.button_constancorr, wx.EXPAND | wx.ALL)# border = 2)
-        # scaling ?
-        self.scaling_checkbox = wx.CheckBox(self, label = 'Scaling ?', style = wx.CHK_2STATE)
-        constchecksizer.Add(self.scaling_checkbox, wx.ALIGN_CENTER | wx.ALL)# border = 2)
-        # smoothing ?
-        self.smoothing_checkbox = wx.CheckBox(self, label = 'Smoothing ?', style = wx.CHK_2STATE)
-        constchecksizer.Add(self.smoothing_checkbox, wx.ALIGN_CENTER | wx.ALL)# border = 2)
+        # constchecksizer=wx.BoxSizer(wx.HORIZONTAL)
+        # constboxsizer.Add(self.button_constancorr, wx.EXPAND | wx.ALL)# border = 2)
+       
         
         #sizer block
-        constboxsizer.Add(constcorrsizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 0)
-        constboxsizer.Add(constchecksizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        constboxsizer.Add(constcorrsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
+        constboxsizer.Add(self.button_constancorr, 2, wx.EXPAND | wx.ALL, border = 0)
+        
+        # constboxsizer.Add(constchecksizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 2)
         
         
         #Scattering correction 
@@ -876,7 +932,7 @@ class TabOne(wx.Panel):
         # Add widgets to the right panel sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.button_openfile, 1, wx.EXPAND | wx.ALL, border = 2)
-        sizer.Add(self.sizer_checkboxes, 1, wx.ALIGN_CENTER)
+        sizer.Add(self.bigsizer_checkboxes, 1, wx.ALIGN_CENTER)
         # sizer.Add(self.FLUO_checkbox, 1, wx.ALIGN_CENTER)
         # self.sizer_checkboxes
         sizer.Add(self.button_rawdat, 1, wx.EXPAND | wx.ALL, border = 2)
@@ -1171,9 +1227,12 @@ class TabOne(wx.Panel):
                 else:
                     tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
-                tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                                              window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
-                                              polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+                if GenPanel.smoothing == 'savgol':
+                    tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                                                  window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                                                  polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+                elif GenPanel.smoothing == 'rolling':
+                    tmp.A = tmp.A.rolling(window=4).mean()
             GenPanel.const_spec[i]=tmp.copy()
             GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
             print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
@@ -1194,9 +1253,12 @@ class TabOne(wx.Panel):
         for i in GenPanel.raw_spec :
             tmp=GenPanel.raw_spec[i].copy()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
-                tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                                              window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
-                                              polyorder=3)
+                if GenPanel.smoothing == 'savgol':
+                    tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                                                  window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                                                  polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+                elif GenPanel.smoothing == 'rolling':
+                    tmp.A = tmp.A.rolling(window=4).mean()
             rightborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()+20
             leftborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()
             segment1 = GenPanel.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
@@ -1212,16 +1274,30 @@ class TabOne(wx.Panel):
                 forfit.A[segment2]-=leewayfac*forfit.A[310:800].max()
             x=forfit.wl[segment].copy()
             y=forfit.A[segment].copy()
-            initialParameters = np.array([1e9,1])
+            
             m=len(forfit.A[segment1])
             sigma=m*[sigmafor3segment[0]]
             m=len(forfit.A[segment2])
             sigma=sigma + m*[sigmafor3segment[1]]
             m=len(forfit.A[segmentend])
             sigma=sigma + m*[sigmafor3segment[2]]
-            para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
-            baseline=tmp.copy()
-            baseline.A=fct_baseline(baseline.wl.copy(), *para)
+            
+            if GenPanel.correction == 'rayleigh':
+                initialParameters = np.array([1e9,1])
+                para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                baseline=tmp.copy()
+                baseline.A=fct_baseline(baseline.wl.copy(), *para)
+            elif GenPanel.correction == 'full':
+                initialParameters = np.array([-100, 1e10, 11, 1, 6e+09])
+                para, pcov = sp.optimize.curve_fit(f=full_correction, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                baseline=tmp.copy()
+                baseline.A=full_correction(baseline.wl.copy(), *para)
+            elif GenPanel.correction == 'custom':
+                initialParameters = np.array([1e9,1,4])
+                para, pcov = sp.optimize.curve_fit(f=custom_correction, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                baseline=tmp.copy()
+                baseline.A=custom_correction(baseline.wl.copy(), *para)
+            
             corrected=tmp.copy()
             corrected.A=tmp.A.copy()-baseline.A
             if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
@@ -1244,7 +1320,7 @@ class TabOne(wx.Panel):
                 vars()['fig' + str(n)].show()
             n+=1
         self.update_right_panel(self.typecorr)
-        
+           
     def mass_center(self, typecorr):  #make typecorr a global left panel value to handle the difference spectrum 
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
@@ -1507,7 +1583,7 @@ class TabTwo(wx.Panel):
         sizer.Add(self.button_save, 6, wx.EXPAND | wx.ALL, border = 2)
         self.SetSizer(sizer)
         
-        pass  # Add your content here
+        # pass  # Add your content here
     def on_timetrace(self, event):
         file_chooser = FileChooser(self, "Do you want the plot in log scale", 1, ['linear scale', 'log scale'])
         if file_chooser.ShowModal() == wx.ID_OK:
@@ -1548,7 +1624,7 @@ class TabTwo(wx.Panel):
                 
     def on_SVD(self, event):
         n=len(GenPanel.raw_spec)-1
-        m=len(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl)
+        m=len(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)])
         print(n, m)
         
         A=np.zeros((m,n),dtype=np.float32)
@@ -1557,21 +1633,21 @@ class TabTwo(wx.Panel):
             i=0
             for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
                 
-                A[:,i] = GenPanel.raw_spec[spec].A-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
+                A[:,i] = GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)] #storing the difference spectrum
                 i+=1
 
         if self.GetParent().GetParent().tab1.typecorr == 'const' :
             i=0
             for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
                 
-                A[:,i] = GenPanel.const_spec[spec].A-GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
+                A[:,i] = GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)]-GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[spec].wl.between(300,800)] #storing the difference spectrum
                 i+=1
 
         if self.GetParent().GetParent().tab1.typecorr == 'ready' :
             i=0
             for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
                 
-                A[:,i] = GenPanel.ready_spec[spec].A-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
+                A[:,i] = GenPanel.ready_spec[spec].A[GenPanel.ready_spec[spec].wl.between(300,800)]-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.ready_spec[spec].wl.between(300,800)] #storing the difference spectrum
                 i+=1
 
         U, S, VT = np.linalg.svd(A) 
@@ -1662,7 +1738,7 @@ class TabTwo(wx.Panel):
         print("Figure saved at: " + file_path + file_name + '.png')
         n=len(GenPanel.raw_spec)-1
         self.rSV=pd.DataFrame(index=GenPanel.list_spec.time_code[1:], columns=['SV' + str(i) for i in range(n+1)])
-        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl, columns=['SV' + str(i) for i in range(n+1)])
+        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)], columns=['SV' + str(i) for i in range(n+1)])
         for i in range(0,n):
             self.rSV['SVn'+str(i)]=self.scaled_time_factors[i]
             self.lSV['SVn'+str(i)]=self.scaled_spec_lSV[:,i] 
@@ -1681,8 +1757,109 @@ class TabTwo(wx.Panel):
     # def on_close(self, event):
     #     self.Destroy()
 
+class TabThree(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent)
+        # Add content for Tab 2 here
+        # kinetics 
+        sizer=wx.BoxSizer(wx.VERTICAL)
+        self.smoothtypebutton = wx.Button(self, label="Smoothing type")
+        self.smoothtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_smoothing)
+        sizer.Add(self.smoothtypebutton, 1, wx.EXPAND | wx.ALL, border = 2)
+        
+        self.corrtypebutton = wx.Button(self, label="Backgound correction type")
+        self.corrtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_correction)
+        sizer.Add(self.corrtypebutton, 2, wx.EXPAND | wx.ALL, border = 2)
+        
+        self.qualityscore_button = wx.Button(self, label='print quality of a spectrum')
+        self.qualityscore_button.Bind(wx.EVT_BUTTON, self.On_qual)
+        sizer.Add(self.qualityscore_button, 3, wx.EXPAND | wx.ALL, border = 2)
+        
+        self.SetSizer(sizer)
+        
+    def OnContextMenu_smoothing(self, event):
+        menu = wx.Menu()
 
+        stavitski_golay = wx.MenuItem(menu, wx.NewId(), "Stavitski-Golay")
+        rolling_average = wx.MenuItem(menu, wx.NewId(), "Rolling-Average")
 
+        menu.Append(stavitski_golay)
+        menu.Append(rolling_average)
+
+        self.Bind(wx.EVT_MENU, self.OnStavitskiGolay, stavitski_golay)
+        self.Bind(wx.EVT_MENU, self.OnRollingAverage, rolling_average)
+
+        self.PopupMenu(menu)
+        menu.Destroy()
+        
+    def OnStavitskiGolay(self, event):
+        print("Stavitski-Golay selected")
+        GenPanel.smoothing = 'savgol'
+
+    def OnRollingAverage(self, event):
+        print("Rolling-Average selected")
+        GenPanel.smoothing = 'rolling'
+    
+    
+    def OnContextMenu_correction(self, event):
+        menu = wx.Menu()
+
+        rayleigh = wx.MenuItem(menu, wx.NewId(), "Rayleigh")
+        full = wx.MenuItem(menu, wx.NewId(), "full")
+        custom = wx.MenuItem(menu, wx.NewId(), "1/λ^n")
+
+        menu.Append(rayleigh)
+        menu.Append(full)
+        menu.Append(custom)
+
+        self.Bind(wx.EVT_MENU, self.OnRayleigh, rayleigh)
+        self.Bind(wx.EVT_MENU, self.OnFullCorr, full)
+        self.Bind(wx.EVT_MENU, self.OnCustomCorr, custom)
+
+        self.PopupMenu(menu)
+        menu.Destroy()
+    def OnRayleigh(self, event):
+        print("Only rayleigh correction has been selected")
+        GenPanel.correction = 'rayleigh'
+
+    def OnFullCorr(self, event):
+        print("Rolling-Average selected")
+        GenPanel.correction = 'full'
+    
+    def OnCustomCorr(self, event):
+        print("1/λ^n selected")
+        GenPanel.correction = 'custom'
+    def On_qual(self, event):
+        file_chooser = FileChooser(self, "Choose Two Files", 1, list(GenPanel.raw_lamp.keys()))
+        if file_chooser.ShowModal() == wx.ID_OK:
+            self.selection = file_chooser.check_list_box.GetCheckedStrings()[0]
+            GenPanel.raw_lamp[self.selection].quality = GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max()
+            self.update_right_panel('quality_plot')
+    def update_right_panel(self, typecorr):
+        if len(self.GetParent().GetParent().tab1.field_topeak.GetValue()) == 0:
+            scaling_top=280
+        else :
+            scaling_top = float(self.GetParent().GetParent().tab1.field_topeak.GetValue())
+        print(scaling_top)
+        self.GetParent().GetParent().GetParent().right_panel.plot_data(typecorr, scaling_top)
+        
+    # def OnContextMenu_qual(self, event):
+    #     menu=wx.Menu()
+    #     for i in GenPanel.raw_lamp:
+    #         def create_dynamic_function(chosen_spectra):
+    #             def dynamic_function():
+    #                 print("Quality plot of spectrum "+i)
+    #                 self.chosenqual = i
+    #             return dynamic_function
+    #         setattr(sys.modules[__name__], Onqual_+'i', dynamic_function)
+                            
+            
+            
+    #         vars()["qual_"+i]= wx.MenuItem(menu, wx.NewId(), i)
+    #         menu.append(vars()['qual_'+i])
+    #         self.Bind(wx.EVT_MENU, self.vars()['Onqual_'+i], vars()['qual_'+i])
+
+    
 # Suppress GTK warning
 
 if __name__ == "__main__":
