@@ -1159,11 +1159,11 @@ class TabOne(wx.Panel):
                     # print(name_correct)
                     if file_path[-4:] == '.asc':
                         GenPanel.raw_spec[name_correct] = pd.read_csv(filepath_or_buffer= file_path,
-                                      sep= " ",
+                                      sep= ",",
                                       decimal=".",
                                       # skiprows=17,
                                       skip_blank_lines=True,
-                                      skipfooter=34,
+                                      # skipfooter=34,
                                       names=['wl','A'],
                                       engine="python")
                         # GenPanel.raw_spec[name_correct].index=GenPanel.raw_spec[file_name].wl
