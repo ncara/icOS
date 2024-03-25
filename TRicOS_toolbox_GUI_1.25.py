@@ -458,7 +458,7 @@ class GenPanel(wx.Panel):
     ready_spec = {}
     diffserie ={}
     diffspec = pd.DataFrame(data=None,columns=['wl','A'])
-    list_spec = pd.DataFrame(data=None, columns = ['file_name','time_code','Abs'])
+    list_spec = pd.DataFrame(data=None, columns = ['file_name','time_code','Abs','laser_dent_blue','laser_dent_red'])
     list_spec.index = list_spec.file_name
     smoothing='savgol'
     correction='full'
@@ -779,6 +779,9 @@ class RightPanel(GenPanel):
 
             self.canvas.draw()
         elif typecorr == 'SVD' :
+            laser_blue=GenPanel.list_spec.laser_dent_blue.min()
+            laser_red=GenPanel.list_spec.laser_dent_red.max()
+            tokeep=[laser_blue == None or laser_red == None or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]]
             # fig, ax = plt.subplots()     
             ax.set_xlabel('Wavelength', fontsize=35)  
             ax.xaxis.set_label_coords(x=0.5, y=-0.1)      
@@ -787,7 +790,8 @@ class RightPanel(GenPanel):
             palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.raw_spec))   
             for i in range(0,len(GenPanel.raw_spec)-1):
                 # tmp['SVn'+str(i)]=self.scaled_time_factors[i]
-                ax.plot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]),self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i], 
+                ax.plot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep]),
+                        self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i], 
                         linewidth=4,                    
                         label='SV n° ' + str(i) ,
                         color=palette[i+1])               
@@ -1135,7 +1139,7 @@ class TabOne(wx.Panel):
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
                         elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
-                            name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-2] + '000000us')
+                            name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
                         file_name = file_path.split(dirsep)[-1][0:-4]
@@ -1191,10 +1195,12 @@ class TabOne(wx.Panel):
                     # print(f"File '{avgname}' added spectra list with data: {GenPanel.raw_spec[avgname].A}")
                     GenPanel.list_spec.loc[avgname,'file_name']=avgname
                     if 'dark' in avgname :
-                        GenPanel.list_spec.loc[avgname,'time_code']=8
+                        GenPanel.list_spec.loc[avgname,'time_code']=1
                     else :
                         GenPanel.list_spec.loc[avgname,'time_code']=int(max(re.findall(r'\d+us', avgname), key = len)[0:-2])#longest_digit_sequence(file_name)
                     GenPanel.list_spec.loc[avgname,'Abs']=GenPanel.raw_spec[avgname].loc[min(GenPanel.raw_spec[avgname]['wl'], key=lambda x: abs(x - 280)),'A']
+                    GenPanel.list_spec.loc[avgname,'laser_dent_blue']=None
+                    GenPanel.list_spec.loc[avgname, 'laser_dent_red']=None
                     self.update_right_panel('raw')
                 dialog.Destroy()
             elif self.avg == 'Open a series':
@@ -1217,7 +1223,7 @@ class TabOne(wx.Panel):
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
                         elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
-                            name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-2] + '000000us')
+                            name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
                         file_name = file_path.split(dirsep)[-1][0:-4]
@@ -1249,10 +1255,12 @@ class TabOne(wx.Panel):
                             # print(f"File '{file_name}' added spectra list with data: {GenPanel.raw_spec[file_name].A}")
                             GenPanel.list_spec.loc[file_name,'file_name']=file_name
                             if 'dark' in file_name :
-                                GenPanel.list_spec.loc[file_name,'time_code']=8
+                                GenPanel.list_spec.loc[file_name,'time_code']=1
                             else :
                                 GenPanel.list_spec.loc[file_name,'time_code']=int(max(re.findall(r'\d+us', file_name), key = len)[0:-2])#longest_digit_sequence(file_name)
                             GenPanel.list_spec.loc[file_name,'Abs']=GenPanel.raw_spec[file_name].loc[min(GenPanel.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
+                            GenPanel.list_spec.loc[file_name,'laser_dent_blue']=None
+                            GenPanel.list_spec.loc[file_name, 'laser_dent_red']=None
                         
                     
                     self.update_right_panel('raw')
@@ -1327,31 +1335,24 @@ class TabOne(wx.Panel):
                         os.rename(file_path, pathtospec + name_correct)
                         file_path=pathtospec + name_correct
                     elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
-                        name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-2] + '000000us')
+                        name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                         os.rename(file_path, pathtospec + name_correct)
                         file_path=pathtospec + name_correct
                     
                     name_correct = file_path.split(dirsep)[-1][0:-4]
                     # print(name_correct)
                     if file_path[-4:] == '.txt' or file_path[-4:] == '.asc' or file_path[-4:] == '.csv':
-                        # GenPanel.raw_spec[name_correct] = pd.read_csv(filepath_or_buffer= file_path,
-                        #           sep= "\t",
-                        #           decimal=".",
-                        #           skiprows=17,
-                        #           skip_blank_lines=True,
-                        #           skipfooter=2,
-                        #           names=['wl','A'],
-                        #           engine="python")
-                   
                         GenPanel.raw_spec[name_correct] = universal_opener(file_path)
                         # GenPanel.raw_spec[name_correct].index=GenPanel.raw_spec[name_correct].wl
                         print(GenPanel.raw_spec[name_correct])
                         GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
                     if 'dark' in name_correct :
-                        GenPanel.list_spec.loc[name_correct,'time_code']=8
+                        GenPanel.list_spec.loc[name_correct,'time_code']=1
                     else :
                         GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+us', name_correct), key = len, default='0us')[0:-2])#longest_digit_sequence(name_correct)
                     GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
+                    GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=None
+                    GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=None
                     
                     
                     print(f"File '{name_correct}' added to dictionary with data: {GenPanel.raw_spec[name_correct].A}")
@@ -1881,31 +1882,52 @@ class TabTwo(wx.Panel):
         self.update_right_panel('diffserie')
                 
     def on_SVD(self, event):
-        n=len(GenPanel.raw_spec)-1
-        m=len(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)])
-        print(n, m)
-        
-        A=np.zeros((m,n),dtype=np.float32)
+        # if GenPanel.list_spec.laser_blue.isnull().all():
+            # tokeep_dark = 
+        laser_blue=GenPanel.list_spec.laser_dent_blue.min()
+        laser_red=GenPanel.list_spec.laser_dent_red.max()
+        tokeep_dark=[laser_blue == None or laser_red == None or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
             
         if self.GetParent().GetParent().tab1.typecorr == 'raw' :
             i=0
+            n=len(GenPanel.raw_spec)-1
+            m=len(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark])
+            print(n, m)
+            A=np.zeros((m,n),dtype=np.float32)
             for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                
-                A[:,i] = GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)] #storing the difference spectrum
+                tokeep=[laser_blue == None or laser_red == None or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)]]
+                A[:,i] = GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark] #storing the difference spectrum
                 i+=1
 
-        if self.GetParent().GetParent().tab1.typecorr == 'const' :
+        elif self.GetParent().GetParent().tab1.typecorr == 'const' :
             i=0
+            n=len(GenPanel.const_spec)-1
+            m=len(GenPanel.const_spec[list(GenPanel.const_spec.keys())[0]].wl[GenPanel.const_spec[list(GenPanel.const_spec.keys())[0]].wl.between(300,800)][tokeep_dark])
+            print(n, m)
+            A=np.zeros((m,n),dtype=np.float32)
             for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
+                tokeep=[laser_blue == None or laser_red == None or x<laser_blue or x>laser_red for x in GenPanel.const_spec[spec].wl[GenPanel.const_spec[spec].wl.between(300,800)]]
+                # print(tokeep)
+                # print(len(tokeep))
+                # print(len(GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[spec].wl.between(300,800)][tokeep]))
+                # print(len(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)][tokeep]))
+                print(len(tokeep))
+                print(len(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)]))
+                print(len(tokeep_dark))
+                print(len(GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]))
+                A[:,i] = GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)][tokeep]-GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)][tokeep_dark] #storing the difference spectrum
                 
-                A[:,i] = GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)]-GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[spec].wl.between(300,800)] #storing the difference spectrum
                 i+=1
 
-        if self.GetParent().GetParent().tab1.typecorr == 'ready' :
+        elif self.GetParent().GetParent().tab1.typecorr == 'ready' :
             i=0
+            n=len(GenPanel.ready_spec)-1
+            m=len(GenPanel.ready_spec[list(GenPanel.ready_spec.keys())[0]].wl[GenPanel.ready_spec[list(GenPanel.ready_spec.keys())[0]].wl.between(300,800)][tokeep_dark])
+            print(n, m)
+            A=np.zeros((m,n),dtype=np.float32)
             for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                
-                A[:,i] = GenPanel.ready_spec[spec].A[GenPanel.ready_spec[spec].wl.between(300,800)]-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.ready_spec[spec].wl.between(300,800)] #storing the difference spectrum
+                tokeep=[laser_blue == None or laser_red == None or x<laser_blue or x>laser_red for x in GenPanel.ready_spec[spec].wl[GenPanel.ready_spec[spec].wl.between(300,800)]]
+                A[:,i] = GenPanel.ready_spec[spec].A[GenPanel.ready_spec[spec].wl.between(300,800)][tokeep]-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.ready_spec[spec].wl.between(300,800)][tokeep_dark] #storing the difference spectrum
                 i+=1
 
         U, S, VT = np.linalg.svd(A) 
@@ -1996,7 +2018,10 @@ class TabTwo(wx.Panel):
         print("Figure saved at: " + file_path + file_name + '.png')
         n=len(GenPanel.raw_spec)-1
         self.rSV=pd.DataFrame(index=GenPanel.list_spec.time_code[1:], columns=['SV' + str(i) for i in range(n+1)])
-        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)], columns=['SV' + str(i) for i in range(n+1)])
+        laser_blue = GenPanel.list_spec.laser_dent_blue.min()
+        laser_red = GenPanel.list_spec.laser_dent_red.max()
+        tokeep_dark=[laser_blue == None or laser_red == None or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
+        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
         for i in range(0,n):
             self.rSV['SVn'+str(i)]=self.scaled_time_factors[i]
             self.lSV['SVn'+str(i)]=self.scaled_spec_lSV[:,i] 
@@ -2023,15 +2048,30 @@ class TabThree(wx.Panel):
         sizer=wx.BoxSizer(wx.VERTICAL)
         self.smoothtypebutton = wx.Button(self, label="Smoothing type")
         self.smoothtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_smoothing)
-        sizer.Add(self.smoothtypebutton, 1, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.smoothtypebutton, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
         
         self.corrtypebutton = wx.Button(self, label="Backgound correction type")
         self.corrtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_correction)
-        sizer.Add(self.corrtypebutton, 2, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.corrtypebutton, 2, wx.EXPAND | wx.HORIZONTAL, border = 2)
         
         self.qualityscore_button = wx.Button(self, label='print quality of a spectrum')
         self.qualityscore_button.Bind(wx.EVT_BUTTON, self.On_qual)
-        sizer.Add(self.qualityscore_button, 3, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.qualityscore_button, 3, wx.EXPAND | wx.HORIZONTAL, border = 2)
+        
+        
+        # laser_removal_sizer=wx.BoxSizer(wx.HORIZONTAL)
+        self.laser_removal_button = wx.Button(self, label='remove laser dent')
+        self.laser_removal_button.Bind(wx.EVT_BUTTON, self.OnLaserRemove)
+        # laser_removal_fieldsizer = BoxSizer(wx.VERTICAL)   
+        # self.laser_remove_label = wx.StaticText(self, label = 'Excitation wavelength', style = wx.ALIGN_CENTER_HORIZONTAL)
+        # laser_removal_fieldsizer.Add(self.laser_remove_label,1 , wx.ALIGN_CENTER | wx.ALL, border = 2)
+        # self.laser_remove_field = wx.TextCtrl(self, value = '450', style = wx.TE_CENTER)
+        # laser_removal_fieldsizer.Add(self.laser_remove_field,2 , wx.ALIGN_CENTER | wx.ALL, border = 2)
+        
+        # laser_removal_sizer.Add(laser_removal_fieldsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        # laser_removal_sizer.Add(laser_removal_button, 2, wx.ALIGN_CENTER | wx.ALL, border = 2)
+        # sizer.Add(laser_removal_sizer, 4, wx.EXPAND, | wx.HORIZONTAL, border = 2)
+        sizer.Add(self.laser_removal_button, 4, wx.EXPAND | wx.ALL, border=2)       
         
         self.SetSizer(sizer)
         
@@ -2109,22 +2149,59 @@ class TabThree(wx.Panel):
             scaling_top = float(self.GetParent().GetParent().tab1.field_topeak.GetValue())
         print(scaling_top)
         self.GetParent().GetParent().GetParent().right_panel.plot_data(typecorr, scaling_top)
+    def OnLaserRemove(self, event):
+
+            peak_position_first=0
+            for spec in list(GenPanel.list_spec.file_name)[1:]:
+                # identifying the laser peak
+                lasered_data = sp.signal.savgol_filter(np.array(GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)]),
+                                                       window_length=23,
+                                                       polyorder=3)
+                peaks, _ = sp.signal.find_peaks(-lasered_data)
+                #assessing whether the dent found is indeed the laser dent, i. e. if it is close to the poisitoin of the laser dent in the first spectrum
+                if peak_position_first== 0 : 
+                    prominences, left_edge, right_edge = sp.signal.peak_prominences(-lasered_data, peaks, wlen = 30)
+                    peak_left = left_edge[np.argmax(prominences)]
+                    peak_position = peaks[np.argmax(prominences)]
+                    peak_right = right_edge[np.argmax(prominences)]
+                    vars()['fig' + spec], vars()['ax' + spec] = plt.subplots()
+                    vars()['ax' + spec].plot(lasered_data)
+                    vars()['ax' + spec].scatter(peaks, lasered_data[peaks], color = 'red')
+                    vars()['ax' + spec].scatter(np.array([peak_left, peak_position, peak_right]), lasered_data[np.array([peak_left, peak_position, peak_right])], color = 'green')
+                    vars()['fig' + spec].show()
+                    peak_position_first=peak_position
+                    wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]
+                    laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_left]
+                    laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_right]
+                    print('in ' + spec + ' Laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]))  
+                    GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue, laser_red)]
+                    GenPanel.list_spec.laser_dent_blue[spec]=laser_blue
+                    GenPanel.list_spec.laser_dent_red[spec]=laser_red
+                else:
+                    closepeaks=[x > peak_position_first - 10 and x < peak_position_first + 10 for x in peaks]
+                    if np.array(closepeaks).any():
+                        peaks=peaks[closepeaks]
+                        prominences, left_edge, right_edge = sp.signal.peak_prominences(-lasered_data, peaks, wlen = 30)
+                        peak_left = left_edge[np.argmax(prominences)]
+                        peak_position = peaks[np.argmax(prominences)]
+                        peak_right = right_edge[np.argmax(prominences)]
+                        vars()['fig' + spec], vars()['ax' + spec] = plt.subplots()
+                        vars()['ax' + spec].plot(lasered_data)
+                        vars()['ax' + spec].scatter(peaks, lasered_data[peaks], color = 'red')
+                        vars()['ax' + spec].scatter(np.array([peak_left, peak_position, peak_right]), lasered_data[np.array([peak_left, peak_position, peak_right])], color = 'green')
+                        vars()['fig' + spec].show()
+                        peak_position_first=peak_position
+                        wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]
+                        laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_left]
+                        laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_right]
+                        print('in ' + spec + ' laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]))  
+                        GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue, laser_red)]
+                        GenPanel.list_spec.laser_dent_blue[spec]=laser_blue
+                        GenPanel.list_spec.laser_dent_red[spec]=laser_red
+                    else:
+                        print('in ' + spec + ' no laser dent found')
+            print(GenPanel.list_spec[['laser_dent_blue','laser_dent_red']])
         
-    # def OnContextMenu_qual(self, event):
-    #     menu=wx.Menu()
-    #     for i in GenPanel.raw_lamp:
-    #         def create_dynamic_function(chosen_spectra):
-    #             def dynamic_function():
-    #                 print("Quality plot of spectrum "+i)
-    #                 self.chosenqual = i
-    #             return dynamic_function
-    #         setattr(sys.modules[__name__], Onqual_+'i', dynamic_function)
-                            
-            
-            
-    #         vars()["qual_"+i]= wx.MenuItem(menu, wx.NewId(), i)
-    #         menu.append(vars()['qual_'+i])
-    #         self.Bind(wx.EVT_MENU, self.vars()['Onqual_'+i], vars()['qual_'+i])
 
     
 # Suppress GTK warning
