@@ -224,9 +224,9 @@ def rgb_to_hex(rgb):
 
 
 
-import matplotlib
+# import matplotlib
 import matplotlib.pyplot as plt  
-matplotlib.use('QTAgg')
+# matplotlib.use('QTAgg')
 
 from collections import Counter
 import tempfile
@@ -842,10 +842,10 @@ class TabOne(wx.Panel):
         self.sizer_checkboxes = wx.BoxSizer(wx.HORIZONTAL)        
         self.TRicOS_checkbox = wx.CheckBox(self, label = 'TR-icOS data ?', style = wx.CHK_2STATE)
         # self.FLUO_checkbox = wx.CheckBox(self, label = 'Fluorescence data ?', style = wx.CHK_2STATE)
-        self.titlegend_checkbox = wx.CheckBox(self, label = 'Toggle off title/legend')
+        # self.titlegend_checkbox = wx.CheckBox(self, label = 'Toggle off title/legend')
         self.sizer_checkboxes.Add(self.TRicOS_checkbox, flag=wx.ALL, border=3)
         # self.sizer_checkboxes.Add(self.FLUO_checkbox, flag=wx.ALL, border=3)
-        self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
+        #self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
         
         
         self.bigsizer_checkboxes.Add(self.sizer_checkboxes, 1, wx.ALIGN_CENTER)
@@ -902,7 +902,7 @@ class TabOne(wx.Panel):
         
         #sizer block
         constboxsizer.Add(constcorrsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
-        constboxsizer.Add(self.button_constancorr, 2, wx.EXPAND | wx.ALL, border = 0)
+        constboxsizer.Add(self.button_constancorr, 1, wx.EXPAND | wx.ALL, border = 0)
         
         # constboxsizer.Add(constchecksizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 2)
         
@@ -966,13 +966,13 @@ class TabOne(wx.Panel):
         
         corrscatsizer.Add(self.button_scattercor, 1, wx.EXPAND | wx.ALL, border = 2)
         corrscatsizer.Add(self.diagplots_checkbox, 1, wx.ALIGN_CENTER)
-        scatboxsizer.Add(corrscatsizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 0)
+        scatboxsizer.Add(corrscatsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
         
         fieldscatsizer=wx.BoxSizer(wx.HORIZONTAL)
-        fieldscatsizer.Add(bluenopeakizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 3)
-        fieldscatsizer.Add(rednopeakizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 3)
-        fieldscatsizer.Add(leewaysizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 3)
-        scatboxsizer.Add(fieldscatsizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 0)
+        fieldscatsizer.Add(bluenopeakizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
+        fieldscatsizer.Add(rednopeakizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
+        fieldscatsizer.Add(leewaysizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
+        scatboxsizer.Add(fieldscatsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
         
         
         # scatboxsizer.AddSpacer(5)
@@ -1009,7 +1009,7 @@ class TabOne(wx.Panel):
         # sizer.Add(self.FLUO_checkbox, 1, wx.ALIGN_CENTER)
         # self.sizer_checkboxes
         sizer.Add(self.button_rawdat, 1, wx.EXPAND | wx.ALL, border = 2)
-        sizer.Add(constboxsizer, 1, wx.EXPAND, border = 5)
+        sizer.Add(constboxsizer, 1, wx.EXPAND, border = 2)
         
         sizer.Add(scatboxsizer, 1, wx.EXPAND, border = 5)
         sizer.Add(self.button_diffspec, 1, wx.EXPAND | wx.ALL, border = 2)
@@ -1263,10 +1263,10 @@ class TabOne(wx.Panel):
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 if GenPanel.smoothing == 'savgol':
                     tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                                                  window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                                                  window_length=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue()),  #This defines the section, longer sections means smoother data but also bigger imprecision self.GetParent().left_panel.tab3.smooth_window_field.GetValue()
                                                   polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
                 elif GenPanel.smoothing == 'rolling':
-                    tmp.A = tmp.A.rolling(window=4).mean()
+                    tmp.A = tmp.A.rolling(window=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue())).mean()
             GenPanel.const_spec[i]=tmp.copy()
             GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
             print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
@@ -1289,10 +1289,10 @@ class TabOne(wx.Panel):
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 if GenPanel.smoothing == 'savgol':
                     tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                                                  window_length=21,  #This defines the section, longer sections means smoother data but also bigger imprecision
+                                                  window_length=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue()),  #This defines the section, longer sections means smoother data but also bigger imprecision
                                                   polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
                 elif GenPanel.smoothing == 'rolling':
-                    tmp.A = tmp.A.rolling(window=4).mean()
+                    tmp.A = tmp.A.rolling(window=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue())).mean()
             rightborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()+20
             leftborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()
             segment1 = GenPanel.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
@@ -1615,18 +1615,18 @@ class TabTwo(wx.Panel):
         self.kin_model_type = 'Hills equation'
         
         
-        sizer.Add(sizer_kinetics, 3, wx.EXPAND | wx.ALL, border = 2)
-        sizer.Add(self.button_timetrace, 4, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(sizer_kinetics, 1, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.button_timetrace, 1, wx.EXPAND | wx.ALL, border = 2)
         
         
         
         self.button_diffserie = wx.Button(self, label = 'Difference spectra')
         self.button_diffserie.Bind(wx.EVT_BUTTON, self.on_diffserie)
-        sizer.Add(self.button_diffserie,5, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.button_diffserie,1, wx.EXPAND | wx.ALL, border = 2)
         #SVD
         self.button_SVD = wx.Button(self, label = 'Singular Value Decomposition')
         self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
-        sizer.Add(self.button_SVD, 6, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
         
         # kinetic fit 
         self.label_kinetic_start = wx.StaticText(self, label = 'Start of fit', style = wx.ALIGN_CENTER_HORIZONTAL)
@@ -1635,25 +1635,35 @@ class TabTwo(wx.Panel):
         self.label_kinetic_end = wx.StaticText(self, label = 'End of fit', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_end = wx.TextCtrl(self, value = '1e9', style = wx.TE_CENTER)
         
+        self.label_kinetic_rate = wx.StaticText(self, label = 'Rate initial value', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_kinetic_rate = wx.TextCtrl(self, style = wx.TE_CENTER)
+        
+        
         kinetic_label_sizer=wx.BoxSizer(wx.HORIZONTAL)
         kinetic_label_sizer.Add(self.label_kinetic_start, 1, wx.ALL, border=2)
         kinetic_label_sizer.Add(self.label_kinetic_end, 1, wx.ALL, border=2)
-        sizer.Add(kinetic_label_sizer,7, wx.EXPAND | wx.ALL, border = 0)
+        kinetic_label_sizer.Add(self.label_kinetic_rate, 1, wx.ALL, border=2)
+        kinetic_label_sizer.Add(self.field_kinetic_rate, 1, wx.ALL, border=2)
+        
+        sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 0)
+        
+        
+        
         
         kinetic_field_sizer=wx.BoxSizer(wx.HORIZONTAL)
         kinetic_field_sizer.Add(self.field_kinetic_start, 1, wx.ALL, border=2)
         kinetic_field_sizer.Add(self.field_kinetic_end, 1, wx.ALL, border=2)
-        sizer.Add(kinetic_label_sizer,8, wx.EXPAND | wx.ALL, border = 1)
-        sizer.Add(kinetic_field_sizer,9, wx.EXPAND | wx.ALL, border = 1)
+        sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
+        sizer.Add(kinetic_field_sizer,1, wx.EXPAND | wx.ALL, border = 1)
         self.kin_button = wx.Button(self, label = 'Kinetic fit')
         self.kin_button.Bind(wx.EVT_BUTTON, self.on_kinetic_fit)
-        sizer.Add(self.kin_button, 10, wx.EXPAND  | wx.ALL, border = 2)
+        sizer.Add(self.kin_button, 1, wx.EXPAND  | wx.ALL, border = 2)
         
         
         # save
         self.button_save = wx.Button(self, label="Save figure and spectra")
         self.button_save.Bind(wx.EVT_BUTTON, self.on_save)
-        sizer.Add(self.button_save, 10, wx.EXPAND | wx.ALL, border = 2)
+        sizer.Add(self.button_save, 1, wx.EXPAND | wx.ALL, border = 2)
         self.SetSizer(sizer)
         
         # self.logscale = self.logscale_checkbox.GetValue()
@@ -1708,6 +1718,8 @@ class TabTwo(wx.Panel):
         #     print(self.kin_model_type)
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
+        print('this is the intial value of the rate: ',self.field_kinetic_rate.GetValue())
+        # rate0 = float(self.field_kinetic_rate.GetValue())
         x=np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)])
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
         print(x,y)
@@ -1920,17 +1932,38 @@ class TabThree(wx.Panel):
         # Add content for Tab 2 here
         # kinetics 
         sizer=wx.BoxSizer(wx.VERTICAL)
+        
+        
+        smoothsizer = wx.BoxSizer(wx.HORIZONTAL)
         self.smoothtypebutton = wx.Button(self, label="Smoothing type")
         self.smoothtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_smoothing)
-        sizer.Add(self.smoothtypebutton, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
+        
+        
+        
+        smoothsizer.Add(self.smoothtypebutton, 2, wx.EXPAND)
+        smoothwindowsizer = wx.BoxSizer(wx.VERTICAL)
+        self.smooth_window_label = wx.StaticText(self, label = 'Smoothing window' , style = wx.ALIGN_CENTER)
+        self.smooth_window_field = wx.TextCtrl(self, value = '21', style = wx.TE_CENTER)
+        smoothwindowsizer.Add(self.smooth_window_label, 1 , wx.ALIGN_CENTER)
+        smoothwindowsizer.Add(self.smooth_window_field, 1 , wx.ALIGN_CENTER)
+        
+        smoothsizer.Add(smoothwindowsizer, 1, wx.EXPAND)
+        
+        
+        
+        sizer.Add(smoothsizer, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
+        
+        
+        
+        
         
         self.corrtypebutton = wx.Button(self, label="Backgound correction type")
         self.corrtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_correction)
-        sizer.Add(self.corrtypebutton, 2, wx.EXPAND | wx.HORIZONTAL, border = 2)
+        sizer.Add(self.corrtypebutton, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
         
         self.qualityscore_button = wx.Button(self, label='print quality of a spectrum')
         self.qualityscore_button.Bind(wx.EVT_BUTTON, self.On_qual)
-        sizer.Add(self.qualityscore_button, 3, wx.EXPAND | wx.HORIZONTAL, border = 2)
+        sizer.Add(self.qualityscore_button, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
         
         
         # laser_removal_sizer=wx.BoxSizer(wx.HORIZONTAL)
@@ -1945,7 +1978,7 @@ class TabThree(wx.Panel):
         # laser_removal_sizer.Add(laser_removal_fieldsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
         # laser_removal_sizer.Add(laser_removal_button, 2, wx.ALIGN_CENTER | wx.ALL, border = 2)
         # sizer.Add(laser_removal_sizer, 4, wx.EXPAND, | wx.HORIZONTAL, border = 2)
-        sizer.Add(self.laser_removal_button, 4, wx.EXPAND | wx.ALL, border=2)       
+        sizer.Add(self.laser_removal_button, 1, wx.EXPAND | wx.ALL, border=2)       
         
         self.SetSizer(sizer)
         
