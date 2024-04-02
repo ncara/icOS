@@ -227,7 +227,7 @@ def rgb_to_hex(rgb):
 # import matplotlib
 import matplotlib.pyplot as plt  
 # matplotlib.use('QTAgg')
-
+from matplotlib.colors import LinearSegmentedColormap
 from collections import Counter
 import tempfile
 
@@ -536,7 +536,7 @@ class Modified_plot_panel(PlotPanel):
     def plot_many_modified(self, datalist, side='left', title=None,
                   xlabel=None, ylabel=None, show_legend=False, zoom_limits=None, **kws):
         """
-        plot many traces at once, taking a list of (x, y) pairs
+        plot many traces at once, taking a list of (x, y) pairs, with lines and a spectral palette
         """
         def unpack_tracedata(tdat, **kws):
             if (isinstance(tdat, dict) and
@@ -581,7 +581,72 @@ class Modified_plot_panel(PlotPanel):
         conf.relabel(delay_draw=True)
         self.draw()
         # self.canvas.Refresh()
+    def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [AU]', 
+                     I0=None, side='left', zoom_limits=None, show_legend=False, **kws):
+        """
+        plot many traces at once, taking a list of (x, y) pairs
+        """
+        def unpack_tracedata(tdat, **kws):
+            if (isinstance(tdat, dict) and
+                'xdata' in tdat and 'ydata' in tdat):
+                xdata = tdat.pop('xdata')
+                ydata = tdat.pop('ydata')
+                out = kws
+                out.update(tdat)
+            elif isinstance(tdat, (list, tuple)):
+                out = kws
+                xdata = tdat[0]
+                ydata = tdat[1]
+            return (xdata, ydata, out)
 
+
+        conf = self.conf
+        opts = dict(side=side, title=title, xlabel=xlabel, ylabel=ylabel,
+                    delay_draw=True, show_legend=False)
+        opts.update(kws)
+        # x0, y0 = datalist[0][0], datalist[0][1]
+        x0, y0, opts = unpack_tracedata(datalist[0])#, **opts)
+        
+        nplot_traces = len(conf.traces)
+        nplot_request = len(datalist)
+        if nplot_request > nplot_traces:
+            linecolors = conf.linecolors
+            ncols = len(linecolors)
+            for i in range(nplot_traces, nplot_request+5):
+                conf.init_trace(i,  linecolors[i%ncols], 'dashed')
+        # palette = [rgb_to_hex(x) for x in sns.color_palette(palette='Spectral', n_colors=len(datalist))]
+        
+        colors = [[1.0, 0.8, 0.4], [0.4, 1.0, 0.4] ]  # Red to Green
+        cmap = LinearSegmentedColormap.from_list("Custom", colors, N=len(I0))
+
+        normalized_I=np.array((I0-1000)/(10000))
+
+        for i in range(0, len(normalized_I)):
+            if normalized_I[i]>1:
+                normalized_I[i]=1
+            elif normalized_I[i]<0:
+                normalized_I[i]=0
+
+        palette=[rgb_to_hex(x[:3]) for x in cmap(normalized_I)]
+        print(x0,y0)
+        self.plot(x0, y0, marker='o', markersize=4, linewidth=0, color=palette[i], alpha=0.5,  delay_draw=True)
+        i=1
+        for dat in datalist[1:]: #for i in range (1, len(datalist)):
+            # x, y = datalist[i][0], datalist[i][1]
+            x, y, opts = unpack_tracedata(dat, delay_draw=True)
+            self.oplot(x, y, marker='o', markersize=4, linewidth=0, style = 'line', color=palette[i], alpha=0.5, delay_draw=True)
+            i+=1
+
+        self.reset_formats()
+        self.set_zoomlimits(zoom_limits)
+        self.conf.show_legend = show_legend
+        if show_legend:
+            conf.draw_legend(delay_draw=True)
+        conf.relabel(delay_draw=True)
+        self.draw()
+        # self.canvas.Refresh()
+
+        
 
 class RightPanel(GenPanel):
     def __init__(self, parent):
@@ -889,20 +954,12 @@ class RightPanel(GenPanel):
         elif typecorr == 'quality_plot': #TODO introduce a fix for this plot by creating a custom plotting function with a color list as one of the intakes
             self.plot_panel.clear()
             chosen_spectrum = self.GetParent().left_panel.tab3.selection
-            print('plotting raw data')     
-            self.plot_panel.oplot(np.array(GenPanel.raw_spec[chosen_spectrum].wl),                  
-                                  np.array(GenPanel.raw_spec[chosen_spectrum].A) ,                   
-                                  linewidth=0,  
-                                  style=None,
-                                  marker='o',
-                                  markersize=4,
-                                  label='Confidence score for ' + chosen_spectrum,
-                                  c=GenPanel.raw_lamp[chosen_spectrum].I0, 
-                                  cmap='coolwarm_r', 
-                                  vmin=1500, vmax=20000,
-                                  alpha=0.7, 
-                                  ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', 
-                                  title = 'Quality score') 
+            print('plotting quality')  
+            list_toplot=[]
+            for i in GenPanel.raw_lamp[chosen_spectrum].index:
+                list_toplot.append((np.array([GenPanel.raw_spec[chosen_spectrum].wl[i]]),                  
+                                    np.array([GenPanel.raw_spec[chosen_spectrum].A[i]])))
+            self.plot_panel.plot_quality(datalist=list_toplot,I0=np.array(GenPanel.raw_lamp[chosen_spectrum].I0))
 
 
 
@@ -1952,7 +2009,7 @@ class TabTwo(wx.Panel):
         # self.plot_panel.yaxis.set_label_coords(x=-0.12, y=0.5)       
         print(n, m)
         palette=sns.color_palette(palette='Spectral', n_colors=len(S)+1)   
-        for i in range(0,20):
+        for i in range(0,min(20,len(self.scaled_time_factors))):
             wi.plot(np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]), 
                     marker='o',
                     linewidth=0, 
@@ -2149,7 +2206,7 @@ class TabThree(wx.Panel):
         GenPanel.correction='straight'
         
     def On_qual(self, event):
-        file_chooser = FileChooser(self, "Choose Two Files", 1, list(GenPanel.raw_lamp.keys()))
+        file_chooser = FileChooser(self, "Choose a File", 1, list(GenPanel.raw_lamp.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             self.selection = file_chooser.check_list_box.GetCheckedStrings()[0]
             GenPanel.raw_lamp[self.selection].quality = GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max()
