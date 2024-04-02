@@ -161,6 +161,7 @@ except ImportError:
 
 try:
     sp = importlib.import_module('scipy')
+    from scipy import signal
     print("SciPy is already installed.")
 except ImportError:
     print("SciPy is not installed. Installing now...")
@@ -1424,7 +1425,7 @@ class TabOne(wx.Panel):
                     tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 if GenPanel.smoothing == 'savgol':
-                    tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                    tmp.A=signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
                                                   window_length=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue()),  #This defines the section, longer sections means smoother data but also bigger imprecision self.GetParent().left_panel.tab3.smooth_window_field.GetValue()
                                                   polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
                 elif GenPanel.smoothing == 'rolling':
@@ -1450,7 +1451,7 @@ class TabOne(wx.Panel):
             tmp=GenPanel.raw_spec[i].copy()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 if GenPanel.smoothing == 'savgol':
-                    tmp.A=sp.signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
+                    tmp.A=signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
                                                   window_length=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue()),  #This defines the section, longer sections means smoother data but also bigger imprecision
                                                   polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
                 elif GenPanel.smoothing == 'rolling':
@@ -2223,13 +2224,13 @@ class TabThree(wx.Panel):
             peak_position_first=0
             for spec in list(GenPanel.list_spec.file_name)[1:]:
                 # identifying the laser peak
-                lasered_data = sp.signal.savgol_filter(np.array(GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)]),
+                lasered_data = signal.savgol_filter(np.array(GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)]),
                                                        window_length=23,
                                                        polyorder=3)
-                peaks, _ = sp.signal.find_peaks(-lasered_data)
+                peaks, _ = signal.find_peaks(-lasered_data)
                 #assessing whether the dent found is indeed the laser dent, i. e. if it is close to the poisitoin of the laser dent in the first spectrum
                 if peak_position_first== 0 : 
-                    prominences, left_edge, right_edge = sp.signal.peak_prominences(-lasered_data, peaks, wlen = 30)
+                    prominences, left_edge, right_edge = signal.peak_prominences(-lasered_data, peaks, wlen = 30)
                     peak_left = left_edge[np.argmax(prominences)]
                     peak_position = peaks[np.argmax(prominences)]
                     peak_right = right_edge[np.argmax(prominences)]
@@ -2250,7 +2251,7 @@ class TabThree(wx.Panel):
                     closepeaks=[x > peak_position_first - 10 and x < peak_position_first + 10 for x in peaks]
                     if np.array(closepeaks).any():
                         peaks=peaks[closepeaks]
-                        prominences, left_edge, right_edge = sp.signal.peak_prominences(-lasered_data, peaks, wlen = 30)
+                        prominences, left_edge, right_edge = signal.peak_prominences(-lasered_data, peaks, wlen = 30)
                         peak_left = left_edge[np.argmax(prominences)]
                         peak_position = peaks[np.argmax(prominences)]
                         peak_right = right_edge[np.argmax(prominences)]
