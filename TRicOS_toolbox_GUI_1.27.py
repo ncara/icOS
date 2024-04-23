@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Mar  1 09:40:26 2024
-
-@author: blank
-"""
-
 """
 Created on Wed Jan 18 15:07:56 2023
 @author: NCARAMEL
@@ -16,6 +9,7 @@ import importlib
 #instlaling packages if not present 
 
 try:
+    #import wx as wx
     wx = importlib.import_module('wx')
     print("wxPython is already installed.")
 except ImportError:
