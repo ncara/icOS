@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Mar  1 09:40:26 2024
+
+@author: blank
+"""
+
 """
 Created on Wed Jan 18 15:07:56 2023
 @author: NCARAMEL
@@ -287,7 +294,7 @@ def full_correction(x, a, b, c, d, e):
     return reflection_coefficient
 
 def fct_monoexp(x, a, b, tau):
-    return a + b*np.exp(x/tau)
+    return a + b*np.exp(-x/tau)
 
 def fct_Hills(x, ini, maximum, Km, rate):
     """
@@ -441,11 +448,26 @@ def universal_opener(file_path):
     decimal_list=[]
     with open(file_path, 'r') as infile:
         # with open(output_file, 'w') as outfile:
-            for line in infile:
+        content=infile.read()
+        if 'JASCO' in content:
+            print('JASCO spectrum')
+            with open(file_path, 'r') as infile:
+                linecounter=0
+                for line in infile:
+                    separator, dec = guess_separator(line)
+                    if linecounter>20 and linecounter < content.count('\n')-47:
+                        delimiter_list.append(separator)
+                        decimal_list.append(dec)
+                    linecounter+=1
+            
+        else:
+            with open(file_path, 'r') as infile:
+                for line in infile:
                 
-                separator, dec = guess_separator(line)
-                delimiter_list.append(separator)
-                decimal_list.append(dec)
+                    separator, dec = guess_separator(line)
+                # print(separator)
+                    delimiter_list.append(separator)
+                    decimal_list.append(dec)
                 # print(separator)
 
     counter = Counter(delimiter_list)
@@ -873,25 +895,24 @@ class RightPanel(GenPanel):
             n=0                          #this is just a counter for the palette, it's ugly as hell but hey, it works 
             self.plot_panel.oplot(np.array(GenPanel.list_spec.time_code), 
                            np.array(GenPanel.list_spec.Abs) ,
-                           color = 'lightblue',
-                           marker='o', markersize=4, linewidth=0,
+                           color = 'blue',
+                           marker='o', markersize=4, linewidth=0, alpha=0.5,
                            style=None,
                            ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', 
-                           label= 'abs at ' + wavelength) 
+                           label= 'abs at ' + wavelength, legend_on=True) 
                   
             print(GenPanel.list_spec.time_code, GenPanel.list_spec.Abs)
             print(self.GetParent().left_panel.tab2.model.x,self.GetParent().left_panel.tab2.model.y)
             self.plot_panel.oplot(np.array(self.GetParent().left_panel.tab2.model.x),
                     np.array(self.GetParent().left_panel.tab2.model.y),
-                    linewidth=2,              #0.5 : pretty thin, 2 : probably what Hadrien used 
+                    linewidth=4, 
                     alpha = 0.5,
                     style='line',
                     marker=None,markersize=0,
-                    
                     label="modelled kinetic with tau="+format(self.GetParent().left_panel.tab2.para_kin_fit[-1], '.3f'),    
                     ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', 
                     title = 'Absorbance at ' + wavelength + 'nm over time after laser pulse',
-                    color='lightblue')
+                    color='red', legend_on=True)
  
         elif typecorr == 'SVD' :
             self.plot_panel.clear()
@@ -899,9 +920,9 @@ class RightPanel(GenPanel):
             laser_red=GenPanel.list_spec.laser_dent_red.max()
             tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]]
     
-            palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.raw_spec))   
+            palette=sns.color_palette(palette='Spectral', n_colors=min(20,len(GenPanel.raw_spec)))   
             list_toplot=[]
-            for i in range(0,len(GenPanel.raw_spec)-1):
+            for i in range(0,min(20,len(GenPanel.raw_spec)-1)):
                 if len(GenPanel.raw_spec) > 30:
                     list_toplot.append((np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep]),
                                         np.array(self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i])))
@@ -1785,33 +1806,59 @@ class TabTwo(wx.Panel):
         self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
         sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
         
-        # kinetic fit 
+        # kinetic fit #TODO : make a vertical sizer for each of them and stack them horizontally. 
         self.label_kinetic_start = wx.StaticText(self, label = 'Start of fit', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_start = wx.TextCtrl(self, value = '0', style = wx.TE_CENTER)
         
         self.label_kinetic_end = wx.StaticText(self, label = 'End of fit', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_end = wx.TextCtrl(self, value = '1e9', style = wx.TE_CENTER)
         
-        self.label_kinetic_rate = wx.StaticText(self, label = 'Rate initial value', style = wx.ALIGN_CENTER_HORIZONTAL)
-        self.field_kinetic_rate = wx.TextCtrl(self, style = wx.TE_CENTER)
+        
+        
         
         
         kinetic_label_sizer=wx.BoxSizer(wx.HORIZONTAL)
         kinetic_label_sizer.Add(self.label_kinetic_start, 1, wx.ALL, border=2)
         kinetic_label_sizer.Add(self.label_kinetic_end, 1, wx.ALL, border=2)
-        kinetic_label_sizer.Add(self.label_kinetic_rate, 1, wx.ALL, border=2)
-        kinetic_label_sizer.Add(self.field_kinetic_rate, 1, wx.ALL, border=2)
+        # kinetic_label_sizer.Add(self.label_kinetic_rate, 1, wx.ALL, border=2)
+        # kinetic_label_sizer.Add(self.field_kinetic_rate, 1, wx.ALL, border=2)
         
         sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 0)
-        
-        
         
         
         kinetic_field_sizer=wx.BoxSizer(wx.HORIZONTAL)
         kinetic_field_sizer.Add(self.field_kinetic_start, 1, wx.ALL, border=2)
         kinetic_field_sizer.Add(self.field_kinetic_end, 1, wx.ALL, border=2)
-        sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
-        sizer.Add(kinetic_field_sizer,1, wx.EXPAND | wx.ALL, border = 1)
+        # sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
+        sizer.Add(kinetic_field_sizer,1, wx.EXPAND | wx.ALL, border = 0)
+        
+        kin_par_sizer=wx.BoxSizer(wx.HORIZONTAL)
+        
+        kin_const_sizer=wx.BoxSizer(wx.VERTICAL)
+        self.label_kinetic_constant = wx.StaticText(self, label = 'constant', style = wx.ALIGN_CENTER_HORIZONTAL)        
+        self.field_kinetic_constant = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
+        kin_const_sizer.Add(self.label_kinetic_constant, 1, wx.CENTER)
+        kin_const_sizer.Add(self.field_kinetic_constant, 1, wx.CENTER)
+        kin_par_sizer.Add(kin_const_sizer, 1, wx.CENTER)
+        
+        kin_scal_sizer=wx.BoxSizer(wx.VERTICAL)
+        self.label_kinetic_scalar = wx.StaticText(self, label = 'scalar', style = wx.ALIGN_CENTER_HORIZONTAL)        
+        self.field_kinetic_scalar = wx.TextCtrl(self, value = '0.5', style = wx.TE_CENTER)
+        kin_scal_sizer.Add(self.label_kinetic_scalar, 1, wx.CENTER)
+        kin_scal_sizer.Add(self.field_kinetic_scalar, 1, wx.CENTER)
+        kin_par_sizer.Add(kin_scal_sizer, 1, wx.CENTER)
+        
+        #insert the sizers in the 
+        kin_rate_sizer=wx.BoxSizer(wx.VERTICAL)
+        self.label_kinetic_rate = wx.StaticText(self, label = 'Rate', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_kinetic_rate = wx.TextCtrl(self, style = wx.TE_CENTER)
+        kin_rate_sizer.Add(self.label_kinetic_rate, 1, wx.CENTER)
+        kin_rate_sizer.Add(self.field_kinetic_rate, 1, wx.CENTER)
+        kin_par_sizer.Add(kin_rate_sizer, 1, wx.CENTER)
+        
+        sizer.Add(kin_par_sizer, 1, wx.EXPAND | wx.ALL, border = 2)
+        
+        
         self.kin_button = wx.Button(self, label = 'Kinetic fit')
         self.kin_button.Bind(wx.EVT_BUTTON, self.on_kinetic_fit)
         sizer.Add(self.kin_button, 1, wx.EXPAND  | wx.ALL, border = 2)
@@ -1875,20 +1922,21 @@ class TabTwo(wx.Panel):
         #     print(self.kin_model_type)
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
-        print('this is the intial value of the rate: ',self.field_kinetic_rate.GetValue())
+        p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
+        print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
         x=np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)])
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
         print(x,y)
         if self.kin_model_type == 'Monoexponential':
             sigma = np.array(len(x)*[1])
-            p0=[y.max(), y.max(), -1/x.max()]
+            print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma, p0 = p0)
         elif self.kin_model_type == 'Hills equation':
             sigma = np.array(len(x)*[1])
             p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_Hills, x,y, sigma = sigma, p0 = p0)
-        print(p0)
+        #print(p0)
         print(self.para_kin_fit)
         
         self.model = pd.DataFrame(columns=['x','y'])
