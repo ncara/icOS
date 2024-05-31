@@ -879,7 +879,9 @@ class RightPanel(GenPanel):
            
             n=0                          #this is just a counter for the palette, it's ugly as hell but hey, it works 
             # for i in GenPanel.list_spec.index:
-            self.plot_panel.oplot(np.array(GenPanel.list_spec.time_code), 
+            startfit=float(self.GetParent().left_panel.tab2.field_kinetic_start.GetValue())
+            dose=float(self.GetParent().left_panel.tab2.abcisse_field.GetValue())
+            self.plot_panel.oplot(     (np.array(GenPanel.list_spec.time_code) -startfit) * dose, #TODO fix that             , 
                     np.array(GenPanel.list_spec.Abs) ,
                     marker='o', markersize=4, color = 'blue', linewidth=0,
                     ylabel='Absorbance [AU]', xlabel='Time [us]', 
@@ -893,13 +895,15 @@ class RightPanel(GenPanel):
             print('trying to print the time-trace at ' + wavelength + 'nm')
 
             n=0                          #this is just a counter for the palette, it's ugly as hell but hey, it works 
-            self.plot_panel.oplot(np.array(GenPanel.list_spec.time_code), 
-                           np.array(GenPanel.list_spec.Abs) ,
-                           color = 'blue',
-                           marker='o', markersize=4, linewidth=0, alpha=0.5,
-                           style=None,
-                           ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', 
-                           label= 'abs at ' + wavelength, legend_on=True) 
+            startfit=float(self.GetParent().left_panel.tab2.field_kinetic_start.GetValue())
+            dose=float(self.GetParent().left_panel.tab2.abcisse_field.GetValue())
+            self.plot_panel.oplot((np.array(GenPanel.list_spec.time_code) -startfit) * dose,
+                                  np.array(GenPanel.list_spec.Abs) ,
+                                  color = 'blue',
+                                  marker='o', markersize=4, linewidth=0, alpha=0.5,
+                                  style=None,
+                                  ylabel='Absorbance [AU]', xlabel='Time [µs]', 
+                                  label= 'abs at ' + wavelength, legend_on=True) 
                   
             print(GenPanel.list_spec.time_code, GenPanel.list_spec.Abs)
             print(self.GetParent().left_panel.tab2.model.x,self.GetParent().left_panel.tab2.model.y)
@@ -910,7 +914,7 @@ class RightPanel(GenPanel):
                     style='line',
                     marker=None,markersize=0,
                     label="modelled kinetic with tau="+format(self.GetParent().left_panel.tab2.para_kin_fit[-1], '.3f'),    
-                    ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', 
+                    ylabel='Absorbance [AU]', xlabel='Time [µs]', 
                     title = 'Absorbance at ' + wavelength + 'nm over time after laser pulse',
                     color='red', legend_on=True)
  
@@ -1775,16 +1779,28 @@ class TabTwo(wx.Panel):
         self.field_timetrace = wx.TextCtrl(self, value = '280', style = wx.TE_CENTER)
         self.label_timetrace = wx.StaticText(self, label = 'Kinetics', style = wx.ALIGN_CENTER_HORIZONTAL)
         
+        self.abcisse_field = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
+        self.abcisse_label = wx.StaticText(self, label = 'Dose', style = wx.ALIGN_CENTER_HORIZONTAL)
+        
+        
         self.button_timetrace = wx.Button(self, label = 'Time-trace')
         self.button_timetrace.Bind(wx.EVT_BUTTON, self.on_timetrace)
+        
+        
         
         sizer_kinetics = wx.BoxSizer(wx.HORIZONTAL)
         sizer_timetrace = wx.BoxSizer(wx.VERTICAL)
         sizer_timetrace.Add(self.label_timetrace, 1, wx.ALL, border = 2)
         sizer_timetrace.Add(self.field_timetrace, 2, wx.ALL, border = 2)
+        
+        sizer_abcisse = wx.BoxSizer(wx.VERTICAL)
+        sizer_abcisse.Add(self.abcisse_label, 1, wx.ALL, border = 2)
+        sizer_abcisse.Add(self.abcisse_field, 2, wx.ALL, border = 2)
+        
         sizer_kinetics.Add(sizer_timetrace,1,  wx.ALL, border = 2)
-        self.logscale_checkbox = wx.CheckBox(self, label = 'Log scale ?', style = wx.CHK_2STATE)
-        sizer_kinetics.Add(self.logscale_checkbox ,2, wx.ALL, border = 2)
+        sizer_kinetics.Add(sizer_abcisse,2,  wx.ALL, border = 2)
+        # self.logscale_checkbox = wx.CheckBox(self, label = 'Log scale ?', style = wx.CHK_2STATE)
+        # sizer_kinetics.Add(self.logscale_checkbox ,2, wx.ALL, border = 2)
         
         self.kintypebutton = wx.Button(self, label="Kinetic model")
         self.kintypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_kinetic)
@@ -1897,10 +1913,10 @@ class TabTwo(wx.Panel):
     def on_timetrace(self, event):
         #TODO : add the possibility of fitting a constant to the data points
         
-        if self.logscale_checkbox.GetValue():
-            print('Logarithmic scale has been chosen')
-        else :
-            print('Linear scale has been chosen')
+        # if self.logscale_checkbox.GetValue():
+        #     print('Logarithmic scale has been chosen')
+        # else :
+        #     print('Linear scale has been chosen')
         wavelength = float(self.field_timetrace.GetValue())
         print(wavelength)
         if self.GetParent().GetParent().tab1.typecorr == 'raw' :
@@ -1925,7 +1941,7 @@ class TabTwo(wx.Panel):
         p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
         print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
-        x=np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)])
+        x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that 
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
         print(x,y)
         if self.kin_model_type == 'Monoexponential':
@@ -1940,18 +1956,18 @@ class TabTwo(wx.Panel):
         print(self.para_kin_fit)
         
         self.model = pd.DataFrame(columns=['x','y'])
-        if self.logscale_checkbox.GetValue():
-            self.model.x = np.geomspace(x.min(), x.max(), 1000)
-            if self.kin_model_type == 'Monoexponential':
-                self.model.y = fct_monoexp(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-            elif self.kin_model_type == 'Hills equation':
-                self.model.y = fct_Hills(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        else : 
-            self.model.x = np.linspace(x.min(), x.max(), 1000)
-            if self.kin_model_type == 'Monoexponential':
-                self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-            elif self.kin_model_type == 'Hills equation':
-                self.model.y = fct_Hills(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        # if self.logscale_checkbox.GetValue():
+        #     self.model.x = np.geomspace(x.min(), x.max(), 1000)
+        #     if self.kin_model_type == 'Monoexponential':
+        #         self.model.y = fct_monoexp(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        #     elif self.kin_model_type == 'Hills equation':
+        #         self.model.y = fct_Hills(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        # else : 
+        self.model.x = np.linspace(x.min(), x.max(), 1000)
+        if self.kin_model_type == 'Monoexponential':
+            self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        elif self.kin_model_type == 'Hills equation':
+            self.model.y = fct_Hills(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         
         self.update_right_panel('kinetic_fit')
             
