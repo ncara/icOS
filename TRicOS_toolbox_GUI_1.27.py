@@ -848,7 +848,7 @@ class RightPanel(GenPanel):
                                     color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
                 n=n+1
             if len(GenPanel.ready_spec) > 30:
-                self.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')
+                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')
         elif typecorr == 'diff':            
             self.plot_panel.clear()
 
