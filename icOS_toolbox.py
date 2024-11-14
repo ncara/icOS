@@ -871,7 +871,9 @@ class RightPanel(GenPanel):
                         title = 'Difference spectrum') 
                     
             n=n+1
-           
+        elif typecorr == '2D_plot':
+            self.plot_panel.clear()
+            
         elif typecorr == 'time-trace':
             self.plot_panel.clear()
             wavelength = str(self.GetParent().left_panel.tab2.field_timetrace.GetValue())
@@ -1817,6 +1819,13 @@ class TabTwo(wx.Panel):
         self.button_diffserie = wx.Button(self, label = 'Difference spectra')
         self.button_diffserie.Bind(wx.EVT_BUTTON, self.on_diffserie)
         sizer.Add(self.button_diffserie,1, wx.EXPAND | wx.ALL, border = 2)
+        
+        #2D_plot
+        self.button_2D_plot = wx.Button(self, label = '2D plot')
+        self.button_2D_plot.Bind(wx.EVT_BUTTON, self.on_2D_plot)
+        sizer.Add(self.button_2D_plot, 1, wx.EXPAND | wx.ALL, border = 2)
+        
+        
         #SVD
         self.button_SVD = wx.Button(self, label = 'Singular Value Decomposition')
         self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
@@ -1990,7 +1999,39 @@ class TabTwo(wx.Panel):
                 GenPanel.diffserie[spec]=GenPanel.ready_spec[spec].copy()
                 GenPanel.diffserie[spec].A=GenPanel.ready_spec[spec].A-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
         self.update_right_panel('diffserie')
-                
+    def on_2D_plot(self, event):
+        if self.GetParent().GetParent().tab1.typecorr == 'const' :
+            test=[]
+            for spec in list(GenPanel.list_spec.file_name)[1:]:
+                # test.append(np.array(GenPanel.diffserie[spec]))
+                test.append(np.array(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(280,700)]))
+            GenPanel.Z=np.transpose(np.array(test))
+            # wi.imshow(map=GenPanel.Z, 
+            #           aspect='auto', 
+            #           cmap='rainbow', 
+            #           vmin=0,
+            #           vmax=0.6, 
+            #           origin='lower', 
+            #           extent=(0,200,280,700) )
+            plt.imshow(GenPanel.Z, 
+                       aspect='auto', 
+                       cmap='rainbow', 
+                       vmin=0, 
+                       vmax=0.6, 
+                       origin='lower', 
+                       extent=(0,200,280,750))
+
+            plt.colorbar(label='Intensity')
+            # plt.set_xlabel([199.56,994.94])
+            plt.xlabel('Time [s]')  # Replace with your actual label
+            plt.ylabel('Wavelength [nm]')  # Replace with your actual label
+            # plt.title('UV-vis absorbtion spectrum of lysosyme over time')
+            plt.show()
+        
+        
+        
+        self.update_right_panel('2D_plot')
+        
     def on_SVD(self, event):
         # if GenPanel.list_spec.laser_blue.isnull().all():
             # tokeep_dark = 
