@@ -881,7 +881,7 @@ class RightPanel(GenPanel):
             self.plot_panel.oplot(     (np.array(GenPanel.list_spec.time_code) -startfit) * dose, #TODO fix that             , 
                     np.array(GenPanel.list_spec.Abs) ,
                     marker='o', markersize=4, color = 'blue', linewidth=0,
-                    ylabel='Absorbance [AU]', xlabel='Time [us]', 
+                    ylabel='Absorbance [AU]', xlabel='Dose [kGy]', 
                     title = 'Absorbance at ' + wavelength + ' over time') 
             for i in GenPanel.list_spec.index :
                 print(GenPanel.list_spec.loc[i, 'time_code'], GenPanel.list_spec.loc[i, 'Abs'])
@@ -2374,3 +2374,4 @@ if __name__ == "__main__":
     app = wx.App()
     frame = MainFrame()
     app.MainLoop()
+
