@@ -223,6 +223,8 @@ def rgb_to_hex(rgb):
 
 # import matplotlib
 import matplotlib.pyplot as plt  
+
+plt.rcParams.update({'font.size': 50})
 # matplotlib.use('QTAgg')
 from matplotlib.colors import LinearSegmentedColormap
 from collections import Counter
@@ -1819,20 +1821,38 @@ class TabTwo(wx.Panel):
         self.button_2D_plot = wx.Button(self, label = '2D plot')
         self.button_2D_plot.Bind(wx.EVT_BUTTON, self.on_2D_plot)
         sizer.Add(self.button_2D_plot, 1, wx.EXPAND | wx.ALL, border = 2)
+
+        #deuxDplot_labels
+        
+        # deuxDplot fit #TODO : make a vertical sizer for each of them and stack them horizontally. 
+        self.label_deuxDplot_start = wx.StaticText(self, label = 'Blue side end 2D plot', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_deuxDplot_start = wx.TextCtrl(self, value = '275', style = wx.TE_CENTER)
+        
+        self.label_deuxDplot_end = wx.StaticText(self, label = 'Red side end 2D plot', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_deuxDplot_end = wx.TextCtrl(self, value = '750', style = wx.TE_CENTER)
         
         
-        #SVD
-        self.button_SVD = wx.Button(self, label = 'Singular Value Decomposition')
-        self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
-        sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
+        deuxDplot_label_sizer=wx.BoxSizer(wx.HORIZONTAL)
+        deuxDplot_label_sizer.Add(self.label_deuxDplot_start, 1, wx.ALL, border=2)
+        deuxDplot_label_sizer.Add(self.label_deuxDplot_end, 1, wx.ALL, border=2)
+        # deuxDplot_label_sizer.Add(self.label_deuxDplot_rate, 1, wx.ALL, border=2)
+        # deuxDplot_label_sizer.Add(self.field_deuxDplot_rate, 1, wx.ALL, border=2)
+        
+        sizer.Add(deuxDplot_label_sizer,1, wx.EXPAND | wx.ALL, border = 0)
+        
+        
+        deuxDplot_field_sizer=wx.BoxSizer(wx.HORIZONTAL)
+        deuxDplot_field_sizer.Add(self.field_deuxDplot_start, 1, wx.ALL, border=2)
+        deuxDplot_field_sizer.Add(self.field_deuxDplot_end, 1, wx.ALL, border=2)
+        # sizer.Add(deuxDplot_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
+        sizer.Add(deuxDplot_field_sizer,1, wx.EXPAND | wx.ALL, border = 0)
         
         # kinetic fit #TODO : make a vertical sizer for each of them and stack them horizontally. 
-        self.label_kinetic_start = wx.StaticText(self, label = 'Start of fit', style = wx.ALIGN_CENTER_HORIZONTAL)
-        self.field_kinetic_start = wx.TextCtrl(self, value = '0', style = wx.TE_CENTER)
+        self.label_kinetic_start = wx.StaticText(self, label = 'Start', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_kinetic_start = wx.TextCtrl(self, value = '10', style = wx.TE_CENTER)
         
-        self.label_kinetic_end = wx.StaticText(self, label = 'End of fit', style = wx.ALIGN_CENTER_HORIZONTAL)
-        self.field_kinetic_end = wx.TextCtrl(self, value = '1e9', style = wx.TE_CENTER)
-        
+        self.label_kinetic_end = wx.StaticText(self, label = 'End', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.field_kinetic_end = wx.TextCtrl(self, value = '200', style = wx.TE_CENTER)
         
         
         
@@ -1851,6 +1871,18 @@ class TabTwo(wx.Panel):
         kinetic_field_sizer.Add(self.field_kinetic_end, 1, wx.ALL, border=2)
         # sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
         sizer.Add(kinetic_field_sizer,1, wx.EXPAND | wx.ALL, border = 0)
+        
+        #SVD
+        self.button_SVD = wx.Button(self, label = 'Singular Value Decomposition')
+        self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
+        sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
+        
+
+        
+        
+        
+        
+        
         
         kin_par_sizer=wx.BoxSizer(wx.HORIZONTAL)
         
@@ -1997,28 +2029,27 @@ class TabTwo(wx.Panel):
     def on_2D_plot(self, event):
         if self.GetParent().GetParent().tab1.typecorr == 'const' :
             test=[]
-            for spec in list(GenPanel.list_spec.file_name)[1:]:
+            dose=float(self.abcisse_field.GetValue())
+            start = int(self.field_kinetic_start.GetValue())
+            endfit = int(self.field_kinetic_end.GetValue())
+            print(start,endfit)
+            print(list(GenPanel.list_spec.file_name)[1:][start:endfit])
+            for spec in list(GenPanel.list_spec.file_name)[1:][start:endfit]:
                 # test.append(np.array(GenPanel.diffserie[spec]))
                 test.append(np.array(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(280,700)]))
             GenPanel.Z=np.transpose(np.array(test))
-            # wi.imshow(map=GenPanel.Z, 
-            #           aspect='auto', 
-            #           cmap='rainbow', 
-            #           vmin=0,
-            #           vmax=0.6, 
-            #           origin='lower', 
-            #           extent=(0,200,280,700) )
+            
+            # fig, ax = plt.subplots()  
+            
             plt.imshow(GenPanel.Z, 
                        aspect='auto', 
                        cmap='rainbow', 
-                       vmin=0, 
-                       vmax=0.6, 
                        origin='lower', 
-                       extent=(0,200,280,750))
+                       extent=(start*dose,endfit*dose,280,750))
 
-            plt.colorbar(label='Intensity')
+            plt.colorbar(label='Absorbance')
             # plt.set_xlabel([199.56,994.94])
-            plt.xlabel('Time [s]')  # Replace with your actual label
+            plt.xlabel('Dose [kGy]')  # Replace with your actual label
             plt.ylabel('Wavelength [nm]')  # Replace with your actual label
             # plt.title('UV-vis absorbtion spectrum of lysosyme over time')
             plt.show()
@@ -2374,4 +2405,3 @@ if __name__ == "__main__":
     app = wx.App()
     frame = MainFrame()
     app.MainLoop()
-
