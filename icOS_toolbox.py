@@ -1292,6 +1292,9 @@ class TabOne(wx.Panel):
                     GenPanel.list_spec.loc[avgname,'file_name']=avgname
                     if 'dark' in avgname :
                         GenPanel.list_spec.loc[avgname,'time_code']=1
+                    elif re.search(r'__\d+__', avgname):
+                        print('THERE WE GO')
+                        GenPanel.list_spec.loc[avgname,'time_code']=int(re.search(r'__\d+__', avgname)[0].replace('_',''))
                     else :
                         GenPanel.list_spec.loc[avgname,'time_code']=int(max(re.findall(r'\d+us', avgname), key = len)[0:-2])#longest_digit_sequence(file_name)
                     GenPanel.list_spec.loc[avgname,'Abs']=GenPanel.raw_spec[avgname].loc[min(GenPanel.raw_spec[avgname]['wl'], key=lambda x: abs(x - 280)),'A']
@@ -1322,6 +1325,8 @@ class TabOne(wx.Panel):
                             name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
+                            
+                            
                         file_name = file_path.split(dirsep)[-1][0:-4]
                         # print(file_name)
                         if file_path[-4:] == '.txt':
@@ -1352,6 +1357,9 @@ class TabOne(wx.Panel):
                             GenPanel.list_spec.loc[file_name,'file_name']=file_name
                             if 'dark' in file_name :
                                 GenPanel.list_spec.loc[file_name,'time_code']=1
+                            elif re.search(r'__\d+__', file_name):
+                                print('THERE WE GO')
+                                GenPanel.list_spec.loc[file_name,'time_code']=int(re.search(r'__\d+__', file_name)[0].replace('_',''))
                             else :
                                 GenPanel.list_spec.loc[file_name,'time_code']=int(max(re.findall(r'\d+us', file_name), key = len)[0:-2])#longest_digit_sequence(file_name)
                             GenPanel.list_spec.loc[file_name,'Abs']=GenPanel.raw_spec[file_name].loc[min(GenPanel.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
@@ -1392,6 +1400,9 @@ class TabOne(wx.Panel):
                         GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
                     if 'dark' in name_correct :
                         GenPanel.list_spec.loc[name_correct,'time_code']=1
+                    elif re.search(r'__\d+__', name_correct):
+                        print('THERE WE GO')
+                        GenPanel.list_spec.loc[name_correct,'time_code']=int(re.search(r'__\d+__', name_correct)[0].replace('_',''))
                     else :
                         try :
                             GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+us', name_correct), key = len)[0:-2])
