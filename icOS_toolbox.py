@@ -708,7 +708,7 @@ class RightPanel(GenPanel):
                 else:
                                         
                             if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top != 0 :
-                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
+                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(scaling_top-10,scaling_top+10,inclusive='both')].mean()
                                 print(palette[n], rgb_to_hex(palette[n]))
                                 if len(GenPanel.raw_spec) > 30 :
                                     list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
@@ -719,7 +719,7 @@ class RightPanel(GenPanel):
                                         linewidth=2,
                                         style='line',
                                         marker=None,markersize=0,
-                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-5,scaling_top+5)].A.idxmax(), '.3f'), 
+                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.3f'), 
                                         color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
                                 # if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
                                 #     for spec in GenPanel.raw_spec:
@@ -727,7 +727,7 @@ class RightPanel(GenPanel):
                             elif self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top == 0 :
                                 tmp_scaling_top = float(GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(300,800,inclusive='both')].idxmax())
                                 print(tmp_scaling_top)
-                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(tmp_scaling_top-5,tmp_scaling_top+5,inclusive='both')].mean()
+                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(tmp_scaling_top-10,tmp_scaling_top+10,inclusive='both')].mean()
                                 if len(GenPanel.raw_spec) > 30 :
                                     list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
                                         np.array(tmp)))
@@ -735,11 +735,9 @@ class RightPanel(GenPanel):
                                     self.plot_panel.oplot(np.array(GenPanel.raw_spec[i].wl),                  
                                         np.array(tmp) , 
                                         style='line',
-                                        marker=None,markersize=0,
-                                        
-                                        
+                                        marker=None,markersize=0,                                    
                                         linewidth=2,
-                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(tmp_scaling_top-5,tmp_scaling_top+5)].A.idxmax(), '.3f'), 
+                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(tmp_scaling_top-10,tmp_scaling_top+10)].A.idxmax(), '.3f'), 
                                         color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
                             else :
                                 if len(GenPanel.raw_spec) > 30 :
@@ -751,7 +749,7 @@ class RightPanel(GenPanel):
                                         linewidth=2,
                                         style='line',
                                         marker=None,markersize=0,
-                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i].A.idxmax(), '.3f'), 
+                                        label=i +" peak max = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.3f'), 
                                         color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')   
                 n=n+1
             if len(GenPanel.raw_spec) > 30 :
@@ -794,7 +792,7 @@ class RightPanel(GenPanel):
                                                           linewidth=2,
                                                           style='line',
                                                           marker=None,markersize=0,
-                                                          label=i+"Max Abs peak ="+format(GenPanel.const_spec[i].A.idxmax(), '.2f'), 
+                                                          label=i+"Max Abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-10,scaling_top+10)].A.idxmax(), '.2f'),
                                                           color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
                             
                 n=n+1
