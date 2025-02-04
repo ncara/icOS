@@ -389,6 +389,51 @@ def Absorbance(tmp):
         return ourdata.drop(columns=['I', 'bgd', "I0"]).copy()
 
 
+def Absorbance_multiscan(tmp): #TODO
+    """
+    Function to calculate Absorbance from spectral data from a file that contains several scans.
+
+    Parameters:
+    tmp (DataFrame): Input DataFrame containing spectral data.
+
+    Returns:
+    DataFrame: DataFrame with Absorbance values calculated.
+
+    This function takes a DataFrame `tmp` containing spectral data as input. If the DataFrame
+    contains a column labeled 'A', it returns a copy of the DataFrame without the columns 'I',
+    'bgd', and 'I0', indicating that Absorbance data is already present. If 'A' is not found,
+    it calculates Absorbance values using the formula Absorbance = -log10((Intensity - Background) / (Reference - Background)).
+    The calculated Absorbance values are stored in a new column 'A' in the DataFrame.
+    """
+
+    ourdata = tmp.copy()
+    # print(ourdata.columns)
+    wl=ourdata.index[0]
+    print(ourdata['ref']-ourdata['dark'])
+    print(ourdata['dark'][wl])
+    # print(ourdata.index)
+    # Check if 'A' column exists in DataFrame
+
+    for wl in ourdata.index:
+        tmpref = ourdata['ref'][wl] - ourdata['dark'][wl]
+        for i in ourdata.columns[3:]:
+            tmpdat = ourdata[i][wl] - ourdata['dark'][wl]
+            if tmpref == 0:  # Prevent division by zero
+                tmpAbs = 0
+            elif tmpdat / tmpref < 0:
+                tmpAbs = 0
+            else:
+                tmpAbs = -np.log(tmpdat / tmpref)
+            ourdata.loc[wl, i] = tmpAbs  # Store calculated Absorbance value in 'A' column
+    ourdata.drop(columns=['dark', 'ref'], inplace=True)
+    raw_spec={}
+    for i in ourdata.columns[3:]:
+        raw_spec[i]=ourdata[['wl',i]]
+        raw_spec[i].columns=['wl','A']
+        # Return a dictionary containing DataFrames with 'wl' and 'A' as columns
+    return raw_spec
+
+
 floatize=np.vectorize(float)   
 
 
@@ -421,7 +466,12 @@ def longest_digit_sequence(input_string):
 
 def guess_separator(line):
     # Define potential separators
-    if ',' in line and not '.' in line:
+    if ';  ' in line :
+        guessed_separator = ';'
+        guessed_decimal = ','
+        return guessed_separator, guessed_decimal
+        
+    elif ',' in line and not '.' in line:
         separators = ['\t', ';', ' '] # for french formats with comma as decimals
         guessed_decimal=','
     else:
@@ -499,8 +549,62 @@ def universal_opener(file_path):
 
     return df
 
+def multiscan_opener(file_path):
+    delimiter_list=[]
+    decimal_list=[]
+    with open(file_path, 'r') as infile:
+        for line in infile:
+            # print(';  ' in line)
+            separator, dec = guess_separator(line)
+            # print(separator, dec)
+        # print(separator)
+            delimiter_list.append(separator)
+            decimal_list.append(dec)
+    counter = Counter(delimiter_list)
+    most_common = counter.most_common(1)
+    delimiter=most_common[0][0]
+    
+    counter = Counter(decimal_list)
+    most_common = counter.most_common(1)
+    decimal=most_common[0][0]
+    
+    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
 
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Check if line starts with a number and contains delimiter
+            cter=0
+            nodigit=0
+            for i in line[0:10]:
+                if i.isdigit() or i == delimiter or i == decimal: 
+                    cter+=1
+                else:
+                    nodigit+=1
+            if cter > nodigit:
+                    temp_file.write(line)
+    
+    temp_file.close()
 
+    
+    
+    raw_scan = pd.read_csv(temp_file.name, 
+                     delimiter=delimiter,
+                     decimal=decimal,
+                     # names=['wl','A'],
+                     engine="python",
+                     header=None)
+    raw_scan.columns = ['wl','dark','ref'] + [f'scan{i+1}' for i in range(len(raw_scan.columns) - 3)]
+    raw_scan.index = raw_scan.wl
+    
+    with open(file_path, 'r') as infile:
+        # with open(output_file, 'w') as outfile:
+        content=infile.read()
+        if 'Measurement mode: Scope' in content and '1204051U1' in content:
+            print('CALAIDOSCOPE scope spectrum')
+            timestamps=pd.read_csv(file_path, header=None, sep=';', skiprows=9, nrows=1, names=raw_scan.columns)
+            # tmpstamp=tmpstamp.iloc[:,3:]
+            # np.array(tmpstamp[0])
+    return Absorbance_multiscan(raw_scan), timestamps
 
 
 class GenPanel(wx.Panel):
@@ -1026,6 +1130,16 @@ class TabOne(wx.Panel):
         # self.sizer_checkboxes.Add(self.FLUO_checkbox, flag=wx.ALL, border=3)
         #self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
         
+        # checkbox for Multi read files (such as that of the cailaidoscope)
+        #TODO change that to be a rollout menu that can iterate between icOS ; TRicOS and Fluo with a third option being 'user supplied'
+     
+        self.Multiscan_checkbox = wx.CheckBox(self, label = 'Multi scan file ?', style = wx.CHK_2STATE)
+        # self.FLUO_checkbox = wx.CheckBox(self, label = 'Fluorescence data ?', style = wx.CHK_2STATE)
+        # self.titlegend_checkbox = wx.CheckBox(self, label = 'Toggle off title/legend')
+        self.sizer_checkboxes.Add(self.Multiscan_checkbox, flag=wx.ALL, border=3)
+        # self.sizer_checkboxes.Add(self.FLUO_checkbox, flag=wx.ALL, border=3)
+        #self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
+        
         
         self.bigsizer_checkboxes.Add(self.sizer_checkboxes, 1, wx.ALIGN_CENTER)
         
@@ -1367,6 +1481,36 @@ class TabOne(wx.Panel):
                     
                     self.update_right_panel('raw')
                 dialog.Destroy()
+        elif self.GetParent().GetParent().tab1.Multiscan_checkbox.GetValue() :
+            wildcard = "TXT files (*.txt)|*.txt|(*.TXT)|*.TXT|All files (*.*)|*.*"
+            dialog = wx.FileDialog(self, "Choose one file", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_MULTIPLE)
+            if dialog.ShowModal() == wx.ID_OK:
+                file_paths = dialog.GetPaths()
+                for file_path in file_paths:
+                    pathtospec=''
+                    # for i in file_path.split(dirsep)[0:-1]:
+                    #     pathtospec+=i+dirsep
+                    # filename_raw = file_path.split(dirsep)[-1]
+                    
+                    
+                    GenPanel.raw_spec, tmpstamps = multiscan_opener(file_path)
+                    
+                    # read the time-stamp for each spectrum 
+                    
+                    
+                    for spec in  GenPanel.raw_spec:
+                            GenPanel.list_spec.loc[spec,'file_name']=spec
+                            # print(int(max(re.findall(r'pH\d+', name_correct), key = len)[2:]))
+                            GenPanel.list_spec.loc[spec,'Abs']=GenPanel.raw_spec[spec].loc[min(GenPanel.raw_spec[spec]['wl'], key=lambda x: abs(x - 280)),'A']
+                            GenPanel.list_spec.loc[spec,'laser_dent_blue']=np.nan
+                            GenPanel.list_spec.loc[spec, 'laser_dent_red']=np.nan
+                            GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec][0]/1e6
+                    
+                    print(f"File '{spec}' added to dictionary with data: {GenPanel.raw_spec[spec].A}")
+                # print(GenPanel.list_spec)
+                self.update_right_panel('raw')
+            dialog.Destroy()
+       
         else :
             # self.typecorr = 'raw'
             wildcard = "TXT files (*.txt)|*.txt|All files (*.*)|*.*"
