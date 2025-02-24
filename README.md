@@ -32,7 +32,7 @@ The first run of the script might produce an error right after having installed 
 If you wish to encase the toolbox into a conda environnement, all dependancies can be installed through conda with the following command
 
 ```bash
-conda create env -n icOS-toolbox python conda-forge::wxmplot seaborn numpy scipy pandas 
+conda create -n icOS-toolbox python conda-forge::wxmplot seaborn numpy scipy pandas 
 ```
 
 Once the environment is created, the script can be run as for the previous section. 
