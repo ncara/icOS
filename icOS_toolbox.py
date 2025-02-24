@@ -1652,12 +1652,12 @@ class TabOne(wx.Panel):
             
             if GenPanel.correction == 'rayleigh':
                 initialParameters = np.array([1e9,1])
-                para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=fct_baseline(baseline.wl.copy(), *para)
             elif GenPanel.correction == 'full':
                 initialParameters = np.array([-100, 1e10, 11, 1, 6e+09])
-                para, pcov = sp.optimize.curve_fit(f=full_correction, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                para, pcov = sp.optimize.curve_fit(f=full_correction, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=full_correction(baseline.wl.copy(), *para)
             elif GenPanel.correction == 'custom':
