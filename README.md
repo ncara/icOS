@@ -15,7 +15,7 @@ The *ic*OS toolbox runs on python. For package availability, python version 3.12
 
 ### Installing python:
 
-For machines running windows, the recommended version of python is available here: https://www.python.org/downloads/windows/. For Linux / MacOS machines, installing python through the package manager of your OS (homebrew for MacOS, apt for Ubuntu/Debian, *ect*) is preferred. 
+For machines running windows, the recommended version of python is available here: https://www.python.org/downloads/windows/. For Linux / MacOS machines, installing python through the package manager of your OS (homebrew for MacOS, apt for Ubuntu/Debian, *ect*) is preferred, and if possible please use python 3.11 as this the version that I used for testing. 
 
 ### Installing packages:
 
