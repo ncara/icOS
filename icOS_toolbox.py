@@ -293,7 +293,7 @@ def full_correction(x, a, b, c, d, e):
 def fct_monoexp(x, a, b, tau):
     return a + b*np.exp(-x/tau)
 
-def fct_Hills(x, ini, maximum, Km, rate):
+def fct_Hill(x, ini, maximum, Km, rate):
     """
     Hill equation function.
 
@@ -1025,9 +1025,9 @@ class RightPanel(GenPanel):
             laser_red=GenPanel.list_spec.laser_dent_red.max()
             tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]]
     
-            palette=sns.color_palette(palette='Spectral', n_colors=min(20,len(GenPanel.raw_spec)))   
+            palette=sns.color_palette(palette='Spectral', n_colors=min(5,len(GenPanel.raw_spec)))   
             list_toplot=[]
-            for i in range(0,min(20,len(GenPanel.raw_spec)-1)):
+            for i in range(0,min(5,len(GenPanel.raw_spec)-1)):
                 if len(GenPanel.raw_spec) > 30:
                     list_toplot.append((np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep]),
                                         np.array(self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i])))
@@ -1041,7 +1041,7 @@ class RightPanel(GenPanel):
                         title = 'left Singular Vectors',
                         xlabel = 'Wavelength [nm]', 
                         ylabel = 'Absorbance [AU]',
-                        color=rgb_to_hex(palette[i+1]))      
+                        color=rgb_to_hex(palette[i]))      
             if len(GenPanel.raw_spec)> 30 :
                 self.plot_panel.plot_many_modified(datalist=list_toplot, title = 'left Singular Vectors',
                                                    xlabel = 'Wavelength [nm]', 
@@ -1957,8 +1957,8 @@ class TabTwo(wx.Panel):
         self.kintypebutton = wx.Button(self, label="Kinetic model")
         self.kintypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_kinetic)
         sizer_kinetics.Add(self.kintypebutton, 3, wx.EXPAND | wx.ALL, border = 2)
-        self.options=['Monoexponential', 'Hills equation']
-        self.kin_model_type = 'Hills equation'
+        self.options=['Monoexponential', 'Hill equation']
+        self.kin_model_type = 'Hill equation'
         
         
         sizer.Add(sizer_kinetics, 1, wx.EXPAND | wx.ALL, border = 2)
@@ -2121,7 +2121,7 @@ class TabTwo(wx.Panel):
         self.update_right_panel('time-trace')
     
     def on_kinetic_fit(self,event):
-        # file_chooser = FileChooser(self, "Which model do you want to fit", 1, ['Monoexponential', 'Hills equation'])
+        # file_chooser = FileChooser(self, "Which model do you want to fit", 1, ['Monoexponential', 'Hill equation'])
         # if file_chooser.ShowModal() == wx.ID_OK:
         #     self.kin_model_type=file_chooser.check_list_box.GetCheckedStrings()[0]
         #     print(self.kin_model_type)
@@ -2133,14 +2133,15 @@ class TabTwo(wx.Panel):
         x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that 
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
         print(x,y)
+        #TODO decide whether we should add initial parameters to the fit or not. 
         if self.kin_model_type == 'Monoexponential':
             sigma = np.array(len(x)*[1])
             print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
-            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma, p0 = p0)
-        elif self.kin_model_type == 'Hills equation':
+            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
+        elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
             p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
-            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_Hills, x,y, sigma = sigma, p0 = p0)
+            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_Hill, x,y, sigma = sigma)
         #print(p0)
         print(self.para_kin_fit)
         
@@ -2149,14 +2150,14 @@ class TabTwo(wx.Panel):
         #     self.model.x = np.geomspace(x.min(), x.max(), 1000)
         #     if self.kin_model_type == 'Monoexponential':
         #         self.model.y = fct_monoexp(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        #     elif self.kin_model_type == 'Hills equation':
-        #         self.model.y = fct_Hills(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        #     elif self.kin_model_type == 'Hill equation':
+        #         self.model.y = fct_Hill(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         # else : 
         self.model.x = np.linspace(x.min(), x.max(), 1000)
         if self.kin_model_type == 'Monoexponential':
             self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        elif self.kin_model_type == 'Hills equation':
-            self.model.y = fct_Hills(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        elif self.kin_model_type == 'Hill equation':
+            self.model.y = fct_Hill(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         
         self.update_right_panel('kinetic_fit')
             
@@ -2278,6 +2279,10 @@ class TabTwo(wx.Panel):
         self.scaled_time_factors=(sigmatrix @ VT)[0:n,:]
         self.scaled_spec_lSV=np.matrix(U) @ np.matrix(sigmatrix)
         
+        
+        print(self.scaled_time_factors)
+        print(self.scaled_spec_lSV)
+        
         # print(GenPanel.list_spec.time_code[1:])
         # print(GenPanel.list_spec.time_code[1:])
         # print(self.scaled_time_factors)
@@ -2287,15 +2292,21 @@ class TabTwo(wx.Panel):
         # self.plot_panel.set_ylabel('Magnitude', fontsize=35)               
         # self.plot_panel.yaxis.set_label_coords(x=-0.12, y=0.5)       
         print(n, m)
-        palette=sns.color_palette(palette='Spectral', n_colors=len(S)+1)   
-        for i in range(0,min(20,len(self.scaled_time_factors))):
-            wi.plot(np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]), 
+        
+        
+        dose=float(self.abcisse_field.GetValue())
+        
+        
+        
+        palette=sns.color_palette(palette='Spectral', n_colors=min(5,len(self.scaled_time_factors)))   
+        for i in range(0,min(5,len(self.scaled_time_factors))):
+            wi.plot(dose*np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]), 
                     marker='o',
                     linewidth=0, 
                     style = 'line',
                     markersize= 4,
                     label='SV n° ' + str(i),
-                    color=rgb_to_hex(palette[i+1]),
+                    color=rgb_to_hex(palette[i]),
                     xlabel = 'time-point (µs, in log scale)',
                     ylabel = 'Magnitude',
                     title = 'right Singular Vector')
@@ -2339,10 +2350,36 @@ class TabTwo(wx.Panel):
         wavelength = str(self.GetParent().GetParent().tab2.field_timetrace.GetValue())
         GenPanel.list_spec.to_csv(file_path + 'time-trace_' + wavelength + '_nm.csv', index=True)
         
-        self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
-        self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
-        self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
-        print("Figure saved at: " + file_path + file_name + '.png')
+        # try:
+        tmp={}
+        for i in range(len(self.scaled_time_factors)):
+            tmp['rSV'+str(i)]=self.scaled_time_factors[i]
+        pd.DataFrame(data=tmp,index=GenPanel.list_spec.index[1:]).to_csv(file_path + file_name + '_rSV.csv',index=True)
+        
+        
+        n=len(GenPanel.raw_spec)-1
+        laser_blue = GenPanel.list_spec.laser_dent_blue.min()
+        laser_red = GenPanel.list_spec.laser_dent_red.max()
+        tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
+        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
+        
+        
+        tmp={}
+        for i in range(len(self.scaled_spec_lSV)):
+            tmp['lSV'+str(i)]=self.scaled_spec_lSV[:,i]
+        pd.DataFrame(data=tmp,index=GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]).to_csv(file_path + file_name + '_rSV.csv',index=True)
+        
+        # except NameError:
+            # print('no SVD results to save')
+        
+        print(self.scaled_time_factors)
+        print('separator')
+        print(self.scaled_spec_lSV)
+        
+        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
+        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
+        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
+        # print("Figure saved at: " + file_path + file_name + '.png')
         n=len(GenPanel.raw_spec)-1
         self.rSV=pd.DataFrame(index=GenPanel.list_spec.time_code[1:], columns=['SV' + str(i) for i in range(n+1)])
         laser_blue = GenPanel.list_spec.laser_dent_blue.min()
@@ -2502,7 +2539,7 @@ class TabThree(wx.Panel):
             peak_position_first=0
             for spec in list(GenPanel.list_spec.file_name)[1:]:
                 # identifying the laser peak
-                lasered_data = signal.savgol_filter(np.array(GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)]),
+                lasered_data = signal.savgol_filter(np.array(GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(350,800)]),
                                                        window_length=23,
                                                        polyorder=3)
                 peaks, _ = signal.find_peaks(-lasered_data)
@@ -2514,17 +2551,17 @@ class TabThree(wx.Panel):
                     peak_right = right_edge[np.argmax(prominences)]
                     vars()['fig' + spec], vars()['ax' + spec] = plt.subplots()
                     vars()['ax' + spec].plot(lasered_data)
-                    vars()['ax' + spec].scatter(peaks, lasered_data[peaks], color = 'red')
+                    vars()['ax' + spec].scatter(peaks, lasered_data[peaks], color = 'red', s=50)
                     vars()['ax' + spec].scatter(np.array([peak_left, peak_position, peak_right]), lasered_data[np.array([peak_left, peak_position, peak_right])], color = 'green')
                     vars()['fig' + spec].show()
                     peak_position_first=peak_position
-                    wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]
-                    laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_left]
-                    laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_right]
-                    print('in ' + spec + ' Laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]))  
-                    GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue, laser_red)]
-                    GenPanel.list_spec.laser_dent_blue[spec]=laser_blue
-                    GenPanel.list_spec.laser_dent_red[spec]=laser_red
+                    wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
+                    laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
+                    laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
+                    print('in ' + spec + ' Laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))  
+                    GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
+                    GenPanel.list_spec.laser_dent_blue[spec]=laser_blue-5
+                    GenPanel.list_spec.laser_dent_red[spec]=laser_red+5
                 else:
                     closepeaks=[x > peak_position_first - 10 and x < peak_position_first + 10 for x in peaks]
                     if np.array(closepeaks).any():
@@ -2535,17 +2572,17 @@ class TabThree(wx.Panel):
                         peak_right = right_edge[np.argmax(prominences)]
                         vars()['fig' + spec], vars()['ax' + spec] = plt.subplots()
                         vars()['ax' + spec].plot(lasered_data)
-                        vars()['ax' + spec].scatter(peaks, lasered_data[peaks], color = 'red')
+                        vars()['ax' + spec].scatter(peaks, lasered_data[peaks], color = 'red',s=50)
                         vars()['ax' + spec].scatter(np.array([peak_left, peak_position, peak_right]), lasered_data[np.array([peak_left, peak_position, peak_right])], color = 'green')
                         vars()['fig' + spec].show()
                         peak_position_first=peak_position
-                        wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]
-                        laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_left]
-                        laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_right]
-                        print('in ' + spec + ' laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)].iloc[peak_position]))  
-                        GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue, laser_red)]
-                        GenPanel.list_spec.laser_dent_blue[spec]=laser_blue
-                        GenPanel.list_spec.laser_dent_red[spec]=laser_red
+                        wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
+                        laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
+                        laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
+                        print('in ' + spec + ' laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))  
+                        GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
+                        GenPanel.list_spec.laser_dent_blue[spec]=laser_blue-5
+                        GenPanel.list_spec.laser_dent_red[spec]=laser_red+5
                     else:
                         print('in ' + spec + ' no laser dent found')
             print(GenPanel.list_spec[['laser_dent_blue','laser_dent_red']])
