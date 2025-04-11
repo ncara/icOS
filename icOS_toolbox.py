@@ -2525,7 +2525,26 @@ class TabThree(wx.Panel):
         file_chooser = FileChooser(self, "Choose a File", 1, list(GenPanel.raw_lamp.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             self.selection = file_chooser.check_list_box.GetCheckedStrings()[0]
-            GenPanel.raw_lamp[self.selection].quality = GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max()
+            GenPanel.raw_lamp[self.selection].quality = np.minimum(GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max(),
+                                                                   GenPanel.raw_lamp[self.selection].I/GenPanel.raw_lamp[self.selection].I.max())
+            #encode saturation
+            tmp1=GenPanel.raw_lamp[self.selection].I0==GenPanel.raw_lamp[self.selection].I0.max() 
+            tmp2=GenPanel.raw_lamp[self.selection].I==GenPanel.raw_lamp[self.selection].I.max()
+            saturated_pixel=(tmp1 | tmp2).to_numpy()
+            is_saturated = np.zeros_like(saturated_pixel, dtype=bool)
+            i = 0
+            while i < len(is_saturated):
+                if is_saturated[i]:
+                    start = i
+                    while i < len(is_saturated) and is_saturated[i]:
+                        i += 1
+                    if i - start > 10:
+                        is_saturated[start:i] = True
+                else:
+                    i += 1
+            for i in range(0,len(GenPanel.raw_lamp[self.selection].quality)):
+                if is_saturated[i]:
+                    GenPanel.raw_lamp[self.selection].quality.iloc[i]=0
             self.update_right_panel('quality_plot')
     def update_right_panel(self, typecorr):
         if len(self.GetParent().GetParent().tab1.field_topeak.GetValue()) == 0:
