@@ -1408,7 +1408,11 @@ class TabOne(wx.Panel):
                         print('THERE WE GO')
                         GenPanel.list_spec.loc[avgname,'time_code']=int(re.search(r'__\d+__', avgname)[0].replace('_',''))
                     else :
-                        GenPanel.list_spec.loc[avgname,'time_code']=int(max(re.findall(r'\d+us', avgname), key = len)[0:-2])#longest_digit_sequence(file_name)
+                        # GenPanel.list_spec.loc[avgname,'time_code']=int(max(re.findall(r'\d+us', avgname), key = len)[0:-2])#longest_digit_sequence(file_name)
+                        try:
+                            GenPanel.list_spec.loc[avgname,'time_code'] = int(max(re.findall(r'\d+us', avgname), key=len)[0:-2])
+                        except (ValueError, IndexError):
+                            GenPanel.list_spec.loc[avgname,'time_code'] = 0
                     GenPanel.list_spec.loc[avgname,'Abs']=GenPanel.raw_spec[avgname].loc[min(GenPanel.raw_spec[avgname]['wl'], key=lambda x: abs(x - 280)),'A']
                     GenPanel.list_spec.loc[avgname,'laser_dent_blue']=np.nan
                     GenPanel.list_spec.loc[avgname, 'laser_dent_red']=np.nan
@@ -1473,7 +1477,11 @@ class TabOne(wx.Panel):
                                 print('THERE WE GO')
                                 GenPanel.list_spec.loc[file_name,'time_code']=int(re.search(r'__\d+__', file_name)[0].replace('_',''))
                             else :
-                                GenPanel.list_spec.loc[file_name,'time_code']=int(max(re.findall(r'\d+us', file_name), key = len)[0:-2])#longest_digit_sequence(file_name)
+                                # GenPanel.list_spec.loc[file_name,'time_code']=int(max(re.findall(r'\d+us', file_name), key = len)[0:-2])#longest_digit_sequence(file_name)
+                                try:
+                                    GenPanel.list_spec.loc[file_name,'time_code'] = int(max(re.findall(r'\d+us', file_name), key=len)[0:-2])
+                                except (ValueError, IndexError):
+                                    GenPanel.list_spec.loc[file_name,'time_code'] = 0
                             GenPanel.list_spec.loc[file_name,'Abs']=GenPanel.raw_spec[file_name].loc[min(GenPanel.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
                             GenPanel.list_spec.loc[file_name,'laser_dent_blue']=np.nan
                             GenPanel.list_spec.loc[file_name, 'laser_dent_red']=np.nan
@@ -2525,26 +2533,7 @@ class TabThree(wx.Panel):
         file_chooser = FileChooser(self, "Choose a File", 1, list(GenPanel.raw_lamp.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             self.selection = file_chooser.check_list_box.GetCheckedStrings()[0]
-            GenPanel.raw_lamp[self.selection].quality = np.minimum(GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max(),
-                                                                   GenPanel.raw_lamp[self.selection].I/GenPanel.raw_lamp[self.selection].I.max())
-            #encode saturation
-            tmp1=GenPanel.raw_lamp[self.selection].I0==GenPanel.raw_lamp[self.selection].I0.max() 
-            tmp2=GenPanel.raw_lamp[self.selection].I==GenPanel.raw_lamp[self.selection].I.max()
-            saturated_pixel=(tmp1 | tmp2).to_numpy()
-            is_saturated = np.zeros_like(saturated_pixel, dtype=bool)
-            i = 0
-            while i < len(is_saturated):
-                if is_saturated[i]:
-                    start = i
-                    while i < len(is_saturated) and is_saturated[i]:
-                        i += 1
-                    if i - start > 10:
-                        is_saturated[start:i] = True
-                else:
-                    i += 1
-            for i in range(0,len(GenPanel.raw_lamp[self.selection].quality)):
-                if is_saturated[i]:
-                    GenPanel.raw_lamp[self.selection].quality.iloc[i]=0
+            GenPanel.raw_lamp[self.selection].quality = GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max()
             self.update_right_panel('quality_plot')
     def update_right_panel(self, typecorr):
         if len(self.GetParent().GetParent().tab1.field_topeak.GetValue()) == 0:
