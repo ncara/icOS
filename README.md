@@ -1,10 +1,13 @@
 # The _ic_ OS toolbox
 
 The *in crystallo* Optical Spectroscopy (*ic*OS) toolbox is a suite of tools encased in a graphical interface, designed to make the recording and processing of absorbance and fluorescence data (both in solution and *in crystallo*) more straightforward. It was originally developed at and for the *ic*OS lab setups, but is meant to be usable by external users. Currently, it supports text-based format inputs from Ocean Optics, JASCO and Avantes (the table of available formats is at the bottom of this README file). 
+I intend to make the toolbox as broadly available as possible. If your files are not correctly loaded in the toolbox, please contact me at [nicolas.caramello@esrf.fr](mailto:nicolas.caramello@esrf.fr) with a copy of your files. 
+
 
 The toolbox is now published in Journal of Applied Crystallography: https://journals.iucr.org/j/issues/2025/03/00/jo5121/
-Make sure to cite it if you used it for your paper. 
-I intend to make the toolbox as broadly available as possible. If your files are not correctly loaded in the toolbox, please contact me at [nicolas.caramello@esrf.fr](mailto:nicolas.caramello@esrf.fr) with a copy of your files. 
+
+Make sure to cite it if you used it for your paper.
+
 
 It consists in three tabs: (a) the main tab, where spectra can be corrected and plotted ; (b) the kinetic tab, where kinetic curve, difference spectra, and singular value decomposition can be calculated, and lastly the expert tab, where the smoothing, modelling and correction settings can be finely adjusted. Finally, by right-clicking a plot and selecting the ‘configuration’ option, a plot-customisation window can be accessed. 
 
