@@ -1536,7 +1536,7 @@ class TabOne(wx.Panel):
                          name_correct = file_path.split(dirsep)[-1][0:-4]
                          toaverage[name_correct]=universal_opener(file_path)
                     #define avg name
-                    
+                    name_correct=name_correct+'_avg' #so that the avg can be compared to all spectra without confusion
                     #add averaged spectrum to raw_spec
                     print(toaverage.keys())
                     tmp=toaverage[list(toaverage.keys())[0]]
