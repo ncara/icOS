@@ -1139,7 +1139,8 @@ class TabOne(wx.Panel):
         self.sizer_checkboxes.Add(self.Multiscan_checkbox, flag=wx.ALL, border=3)
         # self.sizer_checkboxes.Add(self.FLUO_checkbox, flag=wx.ALL, border=3)
         #self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
-        
+        self.averaging_checkbox = wx.CheckBox(self, label= 'averaging', style = wx.CHK_2STATE)
+        self.sizer_checkboxes.Add(self.averaging_checkbox, flag=wx.ALL, border=3)
         
         self.bigsizer_checkboxes.Add(self.sizer_checkboxes, 1, wx.ALIGN_CENTER)
         
@@ -1525,29 +1526,27 @@ class TabOne(wx.Panel):
             dialog = wx.FileDialog(self, "Choose one or several files", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_MULTIPLE)
             if dialog.ShowModal() == wx.ID_OK:
                 file_paths = dialog.GetPaths()
-                for file_path in file_paths:
-                    pathtospec=''
-                    for i in file_path.split(dirsep)[0:-1]:
-                        pathtospec+=i+dirsep
-                    tmpname = file_path.split(dirsep)[-1]
-                    # print(pathtospec)
-                    # print(tmpname)
-                    if re.search(r'\d+ms', tmpname) :
-                        name_correct=tmpname.replace(max(re.findall(r'\d+ms', file_path), key = len), max(re.findall(r'\d+ms', file_path), key = len)[0:-2] + '000us')
-                        os.rename(file_path, pathtospec + name_correct)
-                        file_path=pathtospec + name_correct
-                    elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
-                        name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
-                        os.rename(file_path, pathtospec + name_correct)
-                        file_path=pathtospec + name_correct
+                if self.GetParent().GetParent().tab1.averaging_checkbox.GetValue():
+                    print('averaging spectra')
+                    toaverage={}
+                    for file_path in file_paths:
+                         pathtospec=''
+                        
+                         tmpname = file_path.split(dirsep)[-1]
+                         name_correct = file_path.split(dirsep)[-1][0:-4]
+                         toaverage[name_correct]=universal_opener(file_path)
+                    #define avg name
                     
-                    name_correct = file_path.split(dirsep)[-1][0:-4]
-                    # print(name_correct)
-                    if file_path[-4:] == '.txt' or file_path[-4:] == '.asc' or file_path[-4:] == '.csv':
-                        GenPanel.raw_spec[name_correct] = universal_opener(file_path)
-                        # GenPanel.raw_spec[name_correct].index=GenPanel.raw_spec[name_correct].wl
-                        print(GenPanel.raw_spec[name_correct])
-                        GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
+                    #add averaged spectrum to raw_spec
+                    print(toaverage.keys())
+                    tmp=toaverage[list(toaverage.keys())[0]]
+                    tmp.A=0
+                    for spec in toaverage:
+                        tmp.A+=toaverage[spec].A
+                    tmp.A=tmp.A/len(toaverage.keys())
+                    GenPanel.raw_spec[name_correct]=tmp
+                    print(GenPanel.raw_spec[name_correct])
+                    GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
                     if 'dark' in name_correct :
                         GenPanel.list_spec.loc[name_correct,'time_code']=1
                     elif re.search(r'__\d+__', name_correct):
@@ -1572,9 +1571,58 @@ class TabOne(wx.Panel):
                     GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
                     GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
                     GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
-                    
-                    
                     print(f"File '{name_correct}' added to dictionary with data: {GenPanel.raw_spec[name_correct].A}")
+                else:
+                     for file_path in file_paths:
+                         pathtospec=''
+                         for i in file_path.split(dirsep)[0:-1]:
+                             pathtospec+=i+dirsep
+                         tmpname = file_path.split(dirsep)[-1]
+                         # print(pathtospec)
+                         # print(tmpname)
+                         if re.search(r'\d+ms', tmpname) :
+                             name_correct=tmpname.replace(max(re.findall(r'\d+ms', file_path), key = len), max(re.findall(r'\d+ms', file_path), key = len)[0:-2] + '000us')
+                             os.rename(file_path, pathtospec + name_correct)
+                             file_path=pathtospec + name_correct
+                         elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
+                             name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
+                             os.rename(file_path, pathtospec + name_correct)
+                             file_path=pathtospec + name_correct
+                         
+                         name_correct = file_path.split(dirsep)[-1][0:-4]
+                         # print(name_correct)
+                         if file_path[-4:] == '.txt' or file_path[-4:] == '.asc' or file_path[-4:] == '.csv':
+                             GenPanel.raw_spec[name_correct] = universal_opener(file_path)
+                             # GenPanel.raw_spec[name_correct].index=GenPanel.raw_spec[name_correct].wl
+                             print(GenPanel.raw_spec[name_correct])
+                             GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
+                         if 'dark' in name_correct :
+                             GenPanel.list_spec.loc[name_correct,'time_code']=1
+                         elif re.search(r'__\d+__', name_correct):
+                             print('THERE WE GO')
+                             GenPanel.list_spec.loc[name_correct,'time_code']=int(re.search(r'__\d+__', name_correct)[0].replace('_',''))
+                         else :
+                             try :
+                                 GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+us', name_correct), key = len)[0:-2])
+                             except ValueError :
+                                 try : 
+                                     GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'pH\d+', name_correct), key = len)[2:])
+                                 except ValueError :
+                                     try : 
+                                         GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'__\d+__', name_correct), key = len)[2:-2])
+                                     except :
+                                         try : 
+                                             GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+', name_correct), key = len))
+                                         except :
+                                             GenPanel.list_spec.loc[name_correct,'time_code']=0
+                             
+                                 # print(int(max(re.findall(r'pH\d+', name_correct), key = len)[2:]))
+                         GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
+                         GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
+                         GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
+                         
+                         
+                         print(f"File '{name_correct}' added to dictionary with data: {GenPanel.raw_spec[name_correct].A}")
                 # print(GenPanel.list_spec)
                 self.update_right_panel('raw')
             dialog.Destroy()
