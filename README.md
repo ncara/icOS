@@ -40,6 +40,13 @@ If you wish to encase the toolbox in a conda environment, all dependencies can b
 conda create -n icOS-toolbox python conda-forge::wxmplot seaborn numpy scipy pandas 
 ```
 
+If the wxmplot package is not found, it might be because your conda install doesn't have access to the conda-forge channel. This can be fixed by running: 
+
+
+```bash
+conda config --append channels conda-forge
+```
+
 Once the environment is created, the script can be run as in the previous section. 
 
 # Spectra correction
