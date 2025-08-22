@@ -2213,13 +2213,13 @@ class TabTwo(wx.Panel):
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
             self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Strict Monoexponential':
-            if self.field_kinetic_constant.GetValue().strip():
+            if len(self.field_kinetic_constant.GetValue().strip())==0:
                 print("please input a constant value first")  #TODO check that this works and makes sense 
             else :
                 sigma = np.array(len(x)*[1])
                 print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
                 
-                if self.field_kinetic_scalar.GetValue().strip():
+                if len(self.field_kinetic_scalar.GetValue().strip()) != 0:
                     strict_scalar=float(self.field_kinetic_scalar.GetValue())
                     def fct_monoexp_strict(x,b,tau): 
                         return(strict_constant + b*(1-np.exp(-x/tau)))
