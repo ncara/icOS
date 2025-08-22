@@ -350,8 +350,8 @@ def linbase(x,a,b):
 
 
 
-def parse_float(self, s: str) -> float:
-    s = s.strip()
+def parse_float(s):
+    s = str(s).strip()
     if not s:
         raise ValueError("empty")
     # Allow European decimal comma
@@ -2226,12 +2226,13 @@ class TabTwo(wx.Panel):
             self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Strict Monoexponential':
             try:
-                strict_constant = self.parse_float(self.field_kinetic_constant.GetValue())
+                strict_constant = parse_float(self.field_kinetic_constant.GetValue())
                 sigma = np.array(len(x)*[1])
                 print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
-                
+                print(f"strict y startpoint of {strict_constant} used")
                 try:
                     strict_scalar=parse_float(self.field_kinetic_scalar.GetValue())
+                    print(f"strict y endpoint of {strict_scalar} used")
                     def fct_monoexp_strict(x,tau): 
                         return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
                 except :
