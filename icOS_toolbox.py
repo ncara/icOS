@@ -153,7 +153,7 @@ except ImportError:
     else:
         pip.main(['install', 'numpy'])
         print("numpy has been installed.")
-        np = importlib.import_module('numpy')
+        np = importlib.import_module('numpy') 
 
 try:
     sp = importlib.import_module('scipy')
@@ -292,6 +292,8 @@ def full_correction(x, a, b, c, d, e):
 
 def fct_monoexp(x, a, b, tau):
     return a + b*np.exp(-x/tau)
+
+
 
 def fct_Hill(x, ini, maximum, Km, rate):
     """
@@ -699,6 +701,10 @@ class Modified_plot_panel(PlotPanel):
         conf.relabel(delay_draw=True)
         self.draw()
         # self.canvas.Refresh()
+        
+        
+        
+        
     def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [AU]', 
                      I0=None, side='left', zoom_limits=None, show_legend=False, **kws):
         """
@@ -792,9 +798,7 @@ class RightPanel(GenPanel):
                 list_toplot=[]
             if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
                 centroids = self.GetParent().left_panel.tab1.mass_center(typecorr = typecorr)                                        
-            for i in GenPanel.list_spec.file_name : #GenPanel.raw_spec :                          
-                             
-                
+            for i in GenPanel.raw_spec : #GenPanel.raw_spec : 
                 if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
                     if len(GenPanel.raw_spec) > 30 :
                         list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
@@ -813,7 +817,7 @@ class RightPanel(GenPanel):
                                         
                             if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top != 0 :
                                 tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(scaling_top-20,scaling_top+20,inclusive='both')].mean()
-                                print(palette[n], rgb_to_hex(palette[n]))
+                                # print(palette[n], rgb_to_hex(palette[n]))
                                 if len(GenPanel.raw_spec) > 30 :
                                     list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
                                         np.array(tmp)))
@@ -830,7 +834,7 @@ class RightPanel(GenPanel):
                                 #         GenPanel.raw_spec[spec].A *=1/GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
                             elif self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top == 0 :
                                 tmp_scaling_top = float(GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(300,800,inclusive='both')].idxmax())
-                                print(tmp_scaling_top)
+                                # print(tmp_scaling_top)
                                 tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(tmp_scaling_top-10,tmp_scaling_top+10,inclusive='both')].mean()
                                 if len(GenPanel.raw_spec) > 30 :
                                     list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
@@ -985,7 +989,7 @@ class RightPanel(GenPanel):
             self.plot_panel.oplot(     (np.array(GenPanel.list_spec.time_code) -startfit) * dose, #TODO fix that             , 
                     np.array(GenPanel.list_spec.Abs) ,
                     marker='o', markersize=4, color = 'blue', linewidth=0,
-                    ylabel='Absorbance [AU]', xlabel='Dose [kGy]', 
+                    ylabel='Absorbance [AU]', xlabel='Time [s]', 
                     title = 'Absorbance at ' + wavelength + ' over time') 
             for i in GenPanel.list_spec.index :
                 print(GenPanel.list_spec.loc[i, 'time_code'], GenPanel.list_spec.loc[i, 'Abs'])
@@ -1003,10 +1007,10 @@ class RightPanel(GenPanel):
                                   color = 'blue',
                                   marker='o', markersize=4, linewidth=0, alpha=0.5,
                                   style=None,
-                                  ylabel='Absorbance [AU]', xlabel='Time [µs]', 
+                                  ylabel='Absorbance [AU]', xlabel='Time [s]', 
                                   label= 'abs at ' + wavelength, legend_on=True) 
                   
-            print(GenPanel.list_spec.time_code, GenPanel.list_spec.Abs)
+            # print(GenPanel.list_spec.time_code, GenPanel.list_spec.Abs)
             print(self.GetParent().left_panel.tab2.model.x,self.GetParent().left_panel.tab2.model.y)
             self.plot_panel.oplot(np.array(self.GetParent().left_panel.tab2.model.x),
                     np.array(self.GetParent().left_panel.tab2.model.y),
@@ -1015,7 +1019,7 @@ class RightPanel(GenPanel):
                     style='line',
                     marker=None,markersize=0,
                     label="modelled kinetic with tau="+format(self.GetParent().left_panel.tab2.para_kin_fit[-1], '.3f'),    
-                    ylabel='Absorbance [AU]', xlabel='Time [µs]', 
+                    ylabel='Absorbance [AU]', xlabel='Time [s]', 
                     title = 'Absorbance at ' + wavelength + 'nm over time after laser pulse',
                     color='red', legend_on=True)
  
@@ -1513,7 +1517,7 @@ class TabOne(wx.Panel):
                             GenPanel.list_spec.loc[spec,'Abs']=GenPanel.raw_spec[spec].loc[min(GenPanel.raw_spec[spec]['wl'], key=lambda x: abs(x - 280)),'A']
                             GenPanel.list_spec.loc[spec,'laser_dent_blue']=np.nan
                             GenPanel.list_spec.loc[spec, 'laser_dent_red']=np.nan
-                            GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec][0]/1e6
+                            GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec][0]
                     
                     print(f"File '{spec}' added to dictionary with data: {GenPanel.raw_spec[spec].A}")
                 # print(GenPanel.list_spec)
@@ -1707,25 +1711,32 @@ class TabOne(wx.Panel):
             sigma=sigma + m*[sigmafor3segment[2]]
             
             if GenPanel.correction == 'rayleigh':
-                initialParameters = np.array([1e9,1])
+                # initialParameters = np.array([1e9,1])
                 para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=fct_baseline(baseline.wl.copy(), *para)
             elif GenPanel.correction == 'full':
-                initialParameters = np.array([-100, 1e10, 11, 1, 6e+09])
+                # initialParameters = np.array([-100, 1e10, 11, 1, 6e+09])
                 para, pcov = sp.optimize.curve_fit(f=full_correction, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=full_correction(baseline.wl.copy(), *para)
             elif GenPanel.correction == 'custom':
-                initialParameters = np.array([1e9,1,4])
-                para, pcov = sp.optimize.curve_fit(f=custom_correction, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                # initialParameters = np.array([1e9,1,4])
+                para, pcov = sp.optimize.curve_fit(f=custom_correction, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=custom_correction(baseline.wl.copy(), *para)
             elif GenPanel.correction == 'straight':
-                initialParameters = np.array([-9.98277459e-04, 4.47299554e+09, 4.0e+04 ,  1.79112630e+00])
-                para, pcov = sp.optimize.curve_fit(f=straightforward_solution, xdata=x, ydata=y, p0=initialParameters, sigma=sigma)
+                # initialParameters = np.array([-9.98277459e-04, 4.47299554e+09, 4.0e+04 ,  1.79112630e+00])
+                para, pcov = sp.optimize.curve_fit(f=straightforward_solution, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=straightforward_solution(baseline.wl.copy(), *para)
+            elif GenPanel.correction == 'lin_rayleigh':
+                para_lin, pcov = sp.optimize.curve_fit(f=linbase, xdata=forfit.wl[segmentend].copy(), ydata=forfit.A[segmentend].copy(), sigma=len(forfit.A[segmentend]))
+                forfit.A=forfit.A-linbase(forfit.wl.copy(), *para_lin)
+                para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
+                baseline=tmp.copy()
+                baseline.A=fct_baseline(baseline.wl.copy(), *para)+linbase(baseline.wl.copy(), *para_lin)
+                
             
             corrected=tmp.copy()
             corrected.A=tmp.A.copy()-baseline.A
@@ -2013,8 +2024,8 @@ class TabTwo(wx.Panel):
         self.kintypebutton = wx.Button(self, label="Kinetic model")
         self.kintypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_kinetic)
         sizer_kinetics.Add(self.kintypebutton, 3, wx.EXPAND | wx.ALL, border = 2)
-        self.options=['Monoexponential', 'Hill equation']
-        self.kin_model_type = 'Hill equation'
+        self.options=['Monoexponential', 'Hill equation', 'Strict Monoexponential']
+        self.kin_model_type = 'Monoexponential'
         
         
         sizer.Add(sizer_kinetics, 1, wx.EXPAND | wx.ALL, border = 2)
@@ -2085,14 +2096,6 @@ class TabTwo(wx.Panel):
         self.button_SVD = wx.Button(self, label = 'Singular Value Decomposition')
         self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
         sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
-        
-
-        
-        
-        
-        
-        
-        
         kin_par_sizer=wx.BoxSizer(wx.HORIZONTAL)
         
         kin_const_sizer=wx.BoxSizer(wx.VERTICAL)
@@ -2183,20 +2186,27 @@ class TabTwo(wx.Panel):
         #     print(self.kin_model_type)
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
-        p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
-        print('this is the intial value of the rate: ',str(p0))
+        # p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
+        strict_constant=float(self.field_kinetic_constant.GetValue())
+        # print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
         x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that 
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
-        print(x,y)
+        # print(x,y)
         #TODO decide whether we should add initial parameters to the fit or not. 
         if self.kin_model_type == 'Monoexponential':
             sigma = np.array(len(x)*[1])
             print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
+        elif self.kin_model_type == 'Strict Monoexponential':
+            sigma = np.array(len(x)*[1])
+            print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
+            def fct_monoexp_strict(x,b,tau):
+                return(strict_constant + b*np.exp(-x/tau))
+            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
         elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
-            p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
+            # p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_Hill, x,y, sigma = sigma)
         #print(p0)
         print(self.para_kin_fit)
@@ -2259,7 +2269,7 @@ class TabTwo(wx.Panel):
 
             plt.colorbar(label='Absorbance')
             # plt.set_xlabel([199.56,994.94])
-            plt.xlabel('Dose [kGy]')  # Replace with your actual label
+            plt.xlabel('Time [s]')  # Replace with your actual label
             plt.ylabel('Wavelength [nm]')  # Replace with your actual label
             # plt.title('UV-vis absorbtion spectrum of lysosyme over time')
             plt.show()
@@ -2454,7 +2464,7 @@ class TabTwo(wx.Panel):
             scaling_top=280
         else :
             scaling_top = float(self.GetParent().GetParent().tab1.field_topeak.GetValue())
-        print(scaling_top)
+        # print(scaling_top)
         self.GetParent().GetParent().GetParent().right_panel.plot_data(typecorr, scaling_top)
         
     # def on_close(self, event):
@@ -2547,17 +2557,20 @@ class TabThree(wx.Panel):
         full = wx.MenuItem(menu, wx.NewId(), "full")
         custom = wx.MenuItem(menu, wx.NewId(), "1/λ^n")
         straight = wx.MenuItem(menu, wx.NewId(), 'tinker')
+        lin_rayleigh = wx.MenuItem(menu, wx.NewId(), "Linear+Rayleigh")
         
         
         menu.Append(rayleigh)
         menu.Append(full)
         menu.Append(custom)
         menu.Append(straight)
+        menu.Append(lin_rayleigh)
 
         self.Bind(wx.EVT_MENU, self.OnRayleigh, rayleigh)
         self.Bind(wx.EVT_MENU, self.OnFullCorr, full)
         self.Bind(wx.EVT_MENU, self.OnCustomCorr, custom)
         self.Bind(wx.EVT_MENU, self.OnStraight, straight)
+        self.Bind(wx.EVT_MENU, self.OnLinRay, lin_rayleigh)
         self.PopupMenu(menu)
         menu.Destroy()
         
@@ -2576,6 +2589,10 @@ class TabThree(wx.Panel):
     def OnStraight(self, event):
         print('tinker correction has been chosen')
         GenPanel.correction='straight'
+        
+    def OnLinRay(self, event):
+        GenPanel.correction='lin_rayleigh'
+        print("linear + rayleigh correction has been chosen")
         
     def On_qual(self, event):
         file_chooser = FileChooser(self, "Choose a File", 1, list(GenPanel.raw_lamp.keys()))
