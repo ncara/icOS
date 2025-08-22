@@ -2222,6 +2222,8 @@ class TabTwo(wx.Panel):
         self.model.x = np.linspace(x.min(), x.max(), 1000)
         if self.kin_model_type == 'Monoexponential':
             self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        elif self.kin_model_type == 'Strict Monoexponential':
+            self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Hill equation':
             self.model.y = fct_Hill(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         
