@@ -2196,10 +2196,22 @@ class TabTwo(wx.Panel):
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
         # print(x,y)
         #TODO decide whether we should add initial parameters to the fit or not. 
+        
+        self.model = pd.DataFrame(columns=['x','y'])
+        # if self.logscale_checkbox.GetValue():
+        #     self.model.x = np.geomspace(x.min(), x.max(), 1000)
+        #     if self.kin_model_type == 'Monoexponential':
+        #         self.model.y = fct_monoexp(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        #     elif self.kin_model_type == 'Hill equation':
+        #         self.model.y = fct_Hill(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
+        # else : 
+        self.model.x = np.linspace(x.min(), x.max(), 1000)
+        
         if self.kin_model_type == 'Monoexponential':
             sigma = np.array(len(x)*[1])
             print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
+            self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Strict Monoexponential':
             if self.field_kinetic_constant.GetValue().strip():
                 print("please input a constant value first")  #TODO check that this works and makes sense 
@@ -2215,34 +2227,18 @@ class TabTwo(wx.Panel):
                     def fct_monoexp_strict(x,tau): 
                         return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
                 self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
-
+                self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
                 
         elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
             # p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_Hill, x,y, sigma = sigma)
+            self.model.y = fct_Hill(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         #print(p0)
         print(self.para_kin_fit)
         
-        self.model = pd.DataFrame(columns=['x','y'])
-        # if self.logscale_checkbox.GetValue():
-        #     self.model.x = np.geomspace(x.min(), x.max(), 1000)
-        #     if self.kin_model_type == 'Monoexponential':
-        #         self.model.y = fct_monoexp(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        #     elif self.kin_model_type == 'Hill equation':
-        #         self.model.y = fct_Hill(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        # else : 
-        self.model.x = np.linspace(x.min(), x.max(), 1000)
-        if self.kin_model_type == 'Monoexponential':
-            self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        elif self.kin_model_type == 'Strict Monoexponential':
-            self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        elif self.kin_model_type == 'Hill equation':
-            self.model.y = fct_Hill(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        
         self.update_right_panel('kinetic_fit')
-            
-        pass
+
 
     
     def on_diffserie(self, event):
