@@ -2100,14 +2100,14 @@ class TabTwo(wx.Panel):
         
         kin_const_sizer=wx.BoxSizer(wx.VERTICAL)
         self.label_kinetic_constant = wx.StaticText(self, label = 'constant', style = wx.ALIGN_CENTER_HORIZONTAL)        
-        self.field_kinetic_constant = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
+        self.field_kinetic_constant = wx.TextCtrl(self, style = wx.TE_CENTER)
         kin_const_sizer.Add(self.label_kinetic_constant, 1, wx.CENTER)
         kin_const_sizer.Add(self.field_kinetic_constant, 1, wx.CENTER)
         kin_par_sizer.Add(kin_const_sizer, 1, wx.CENTER)
         
         kin_scal_sizer=wx.BoxSizer(wx.VERTICAL)
         self.label_kinetic_scalar = wx.StaticText(self, label = 'scalar', style = wx.ALIGN_CENTER_HORIZONTAL)        
-        self.field_kinetic_scalar = wx.TextCtrl(self, value = '0.5', style = wx.TE_CENTER)
+        self.field_kinetic_scalar = wx.TextCtrl(self, style = wx.TE_CENTER)
         kin_scal_sizer.Add(self.label_kinetic_scalar, 1, wx.CENTER)
         kin_scal_sizer.Add(self.field_kinetic_scalar, 1, wx.CENTER)
         kin_par_sizer.Add(kin_scal_sizer, 1, wx.CENTER)
@@ -2187,7 +2187,9 @@ class TabTwo(wx.Panel):
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
         # p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
-        strict_constant=float(self.field_kinetic_constant.GetValue())
+        if not self.field_kinetic_constant.GetValue().strip():
+            strict_constant=float(self.field_kinetic_constant.GetValue())
+            
         # print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
         x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that 
@@ -2199,11 +2201,22 @@ class TabTwo(wx.Panel):
             print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
         elif self.kin_model_type == 'Strict Monoexponential':
-            sigma = np.array(len(x)*[1])
-            print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
-            def fct_monoexp_strict(x,b,tau):
-                return(strict_constant + b*(1-np.exp(-x/tau)))
-            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
+            if self.field_kinetic_constant.GetValue().strip():
+                print("please input a constant value first")  #TODO check that this works and makes sense 
+            else :
+                sigma = np.array(len(x)*[1])
+                print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
+                
+                if self.field_kinetic_scalar.GetValue().strip():
+                    strict_scalar=float(self.field_kinetic_scalar.GetValue())
+                    def fct_monoexp_strict(x,b,tau): 
+                        return(strict_constant + b*(1-np.exp(-x/tau)))
+                else :
+                    def fct_monoexp_strict(x,tau): 
+                        return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
+                self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
+
+                
         elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
             # p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
