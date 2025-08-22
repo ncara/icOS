@@ -7,7 +7,7 @@ Created on Wed Jan 18 15:07:56 2023
 import warnings
 warnings.simplefilter("ignore")
 import importlib
-
+import math
 #instlaling packages if not present 
 
 try:
@@ -348,6 +348,18 @@ def linbase(x,a,b):
     """
     return a*x+b
 
+
+
+def parse_float(self, s: str) -> float:
+    s = s.strip()
+    if not s:
+        raise ValueError("empty")
+    # Allow European decimal comma
+    s = s.replace(",", ".")
+    x = float(s)  # will raise ValueError if invalid
+    if not math.isfinite(x):  # reject 'nan', 'inf', etc.
+        raise ValueError("non-finite")
+    return x
 
 def Absorbance(tmp):
     """
@@ -2072,7 +2084,7 @@ class TabTwo(wx.Panel):
         self.field_kinetic_start = wx.TextCtrl(self, value = '10', style = wx.TE_CENTER)
         
         self.label_kinetic_end = wx.StaticText(self, label = 'End', style = wx.ALIGN_CENTER_HORIZONTAL)
-        self.field_kinetic_end = wx.TextCtrl(self, value = '200', style = wx.TE_CENTER)
+        self.field_kinetic_end = wx.TextCtrl(self, value = '12000000', style = wx.TE_CENTER)
         
         
         
@@ -2187,9 +2199,9 @@ class TabTwo(wx.Panel):
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
         # p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
-        if self.field_kinetic_constant.GetValue().strip():
-            strict_constant=float(self.field_kinetic_constant.GetValue())
-            
+        
+        
+        
         # print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
         x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that 
@@ -2213,22 +2225,31 @@ class TabTwo(wx.Panel):
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
             self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Strict Monoexponential':
-            if len(self.field_kinetic_constant.GetValue().strip())==0:
-                print("please input a constant value first")  #TODO check that this works and makes sense 
-            else :
+            try:
+                strict_constant = self.parse_float(self.field_kinetic_constant.GetValue())
                 sigma = np.array(len(x)*[1])
                 print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
                 
-                if len(self.field_kinetic_scalar.GetValue().strip()) != 0:
-                    strict_scalar=float(self.field_kinetic_scalar.GetValue())
-                    def fct_monoexp_strict(x,b,tau): 
-                        return(strict_constant + b*(1-np.exp(-x/tau)))
-                else :
+                try:
+                    strict_scalar=parse_float(self.field_kinetic_scalar.GetValue())
                     def fct_monoexp_strict(x,tau): 
                         return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
+                except :
+                    def fct_monoexp_strict(x,b,tau): 
+                        return(strict_constant + b*(1-np.exp(-x/tau)))
                 self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
                 self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-                
+            except Exception:
+                # Mark invalid and notify
+                self.field_kinetic_constant.SetBackgroundColour("pink")
+                self.field_kinetic_constant.SetFocus()
+                self.field_kinetic_constant.Refresh()
+                wx.MessageBox(
+                    "Please enter a valid number (e.g., 12.3 or 12,3).",
+                    "Invalid input",
+                    wx.OK | wx.ICON_ERROR,
+                )
+                return
         elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
             # p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
