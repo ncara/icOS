@@ -2202,7 +2202,7 @@ class TabTwo(wx.Panel):
             sigma = np.array(len(x)*[1])
             print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
             def fct_monoexp_strict(x,b,tau):
-                return(strict_constant + b*np.exp(-x/tau))
+                return(strict_constant + b*(1-np.exp(-x/tau)))
             self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
         elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
