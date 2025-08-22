@@ -2187,7 +2187,7 @@ class TabTwo(wx.Panel):
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
         # p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
-        if not self.field_kinetic_constant.GetValue().strip():
+        if self.field_kinetic_constant.GetValue().strip():
             strict_constant=float(self.field_kinetic_constant.GetValue())
             
         # print('this is the intial value of the rate: ',str(p0))
