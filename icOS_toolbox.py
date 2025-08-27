@@ -2011,7 +2011,7 @@ class TabTwo(wx.Panel):
         self.label_timetrace = wx.StaticText(self, label = 'Kinetics', style = wx.ALIGN_CENTER_HORIZONTAL)
         
         self.abcisse_field = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
-        self.abcisse_label = wx.StaticText(self, label = 'Dose', style = wx.ALIGN_CENTER_HORIZONTAL)
+        self.abcisse_label = wx.StaticText(self, label = 'Time [s]', style = wx.ALIGN_CENTER_HORIZONTAL)
         
         
         self.button_timetrace = wx.Button(self, label = 'Time-trace')
