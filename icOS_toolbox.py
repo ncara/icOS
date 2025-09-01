@@ -9,7 +9,7 @@ warnings.simplefilter("ignore")
 import importlib
 import math
 #instlaling packages if not present 
-
+# from IPython.display import display
 try:
     #import wx as wx
     wx = importlib.import_module('wx')
@@ -1708,19 +1708,22 @@ class TabOne(wx.Panel):
             #peakless visible segment
             sigmafor3segment=[float(self.field_weighUV.GetValue()),float(self.field_weighpeakless.GetValue()),float(self.field_weighbaseline.GetValue())]
             forfit=tmp.copy()
-            if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
-                forfit.A[segment2]-=leewayfac*forfit.A[scaling_top-10:scaling_top+10].max()
-            else :
-                forfit.A[segment2]-=leewayfac*forfit.A[310:800].max()
-            x=forfit.wl[segment].copy()
-            y=forfit.A[segment].copy()
-            
-            m=len(forfit.A[segment1])
-            sigma=m*[sigmafor3segment[0]]
+            # if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
+            #     forfit.A[segment2]-=leewayfac*forfit.A[scaling_top-10:scaling_top+10].max()
+            # else :
+            #     forfit.A[segment2]-=leewayfac*forfit.A[310:800].max()
+            x=forfit.wl[segment].fillna(value=0).copy()
+            y=forfit.A[segment].fillna(value=0).copy()
+            print(forfit.A[segment2].to_string())
+            m=len(forfit.A[segmentend])
+            sigma=m*[sigmafor3segment[2]]
             m=len(forfit.A[segment2])
             sigma=sigma + m*[sigmafor3segment[1]]
-            m=len(forfit.A[segmentend])
-            sigma=sigma + m*[sigmafor3segment[2]]
+            m=len(forfit.A[segment1])
+            sigma=sigma + m*[sigmafor3segment[0]]
+            
+            diagdf=pd.DataFrame(data={"x":x,"y":y,"sigma":sigma})
+            print(diagdf.to_string())
             
             if GenPanel.correction == 'rayleigh':
                 # initialParameters = np.array([1e9,1])
@@ -1761,15 +1764,16 @@ class TabOne(wx.Panel):
                 
             GenPanel.ready_spec[i]=corrected
             # tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
+            diagplots={}
             if not self.GetParent().GetParent().tab1.diagplots_checkbox.GetValue() : 
-                vars()['fig' + str(n)], vars()['ax' + str(n)] = plt.subplots()
-                vars()['ax' + str(n)].set_title(str(i))
-                vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl,GenPanel.raw_spec[i].A)
-                vars()['ax' + str(n)].plot(baseline.wl,baseline.A)
-                vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment1], GenPanel.raw_spec[i].A[segment1], color = 'lime')
-                vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment2], GenPanel.raw_spec[i].A[segment2], color = 'magenta')
-                vars()['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson') 
-                vars()['fig' + str(n)].show()
+                diagplots['fig' + str(n)], diagplots['ax' + str(n)] = plt.subplots()
+                diagplots['ax' + str(n)].set_title(str(i))
+                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl,GenPanel.raw_spec[i].A)
+                diagplots['ax' + str(n)].plot(baseline.wl,baseline.A)
+                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment1], GenPanel.raw_spec[i].A[segment1], color = 'lime')
+                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment2], GenPanel.raw_spec[i].A[segment2], color = 'magenta')
+                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson') 
+                diagplots['fig' + str(n)].show()
             n+=1
         self.update_right_panel(self.typecorr)
            
