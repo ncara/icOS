@@ -1707,14 +1707,32 @@ class TabOne(wx.Panel):
             segment=segment1+segment2+segmentend
             #peakless visible segment
             sigmafor3segment=[float(self.field_weighUV.GetValue()),float(self.field_weighpeakless.GetValue()),float(self.field_weighbaseline.GetValue())]
-            forfit=tmp.copy()
-            # if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
-            #     forfit.A[segment2]-=leewayfac*forfit.A[scaling_top-10:scaling_top+10].max()
-            # else :
-            #     forfit.A[segment2]-=leewayfac*forfit.A[310:800].max()
+            forfit=tmp.astype(float)
+            forfit.index=forfit.wl
+            if leewayfac==0:
+                pass
+            elif self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
+                print(" ")
+                print(" ")
+                print(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)])
+                print(" ")
+                print(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)].max(skipna=True))
+                print(" ")
+                # print(forfit.A[segment2]-leewayfac*forfit.A[scaling_top-10:scaling_top+10].max())
+                forfit.A[segment2]-=leewayfac*float(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)].max(skipna=True))
+            else :
+                print(" ")
+                print(" ")
+                print(forfit.A[forfit.wl.between(310,800)])
+                print(" ")
+                print(forfit.A[forfit.wl.between(310,800)].max(skipna=True))
+                print(" ")
+                # print(forfit[segment2]-leewayfac*forfit.A[310:800].max())
+                forfit.A[segment2]-=leewayfac*float(forfit.A[forfit.wl.between(310,800)].max(skipna=True))
+            
             x=forfit.wl[segment].fillna(value=0).copy()
             y=forfit.A[segment].fillna(value=0).copy()
-            print(forfit.A[segment2].to_string())
+            # print(forfit.A[segment2].to_string())
             m=len(forfit.A[segmentend])
             sigma=m*[sigmafor3segment[2]]
             m=len(forfit.A[segment2])
