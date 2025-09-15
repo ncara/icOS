@@ -564,61 +564,92 @@ def universal_opener(file_path):
     return df
 
 def multiscan_opener(file_path):
-    delimiter_list=[]
-    decimal_list=[]
-    with open(file_path, 'r') as infile:
-        for line in infile:
-            # print(';  ' in line)
-            separator, dec = guess_separator(line)
-            # print(separator, dec)
-        # print(separator)
-            delimiter_list.append(separator)
-            decimal_list.append(dec)
-    counter = Counter(delimiter_list)
-    most_common = counter.most_common(1)
-    delimiter=most_common[0][0]
-    
-    counter = Counter(decimal_list)
-    most_common = counter.most_common(1)
-    decimal=most_common[0][0]
-    
-    temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+    file_name=os.path.basename(file_path)
+    if file_name.startswith('constant_') or file_name.startswith('raw_') or file_name.startswith('ready_') or file_name.startswith('./constant_') or file_name.startswith('./raw_') or file_name.startswith('./ready_'):
+        tmp_spec=pd.read_csv(file_path)
+        tmp_spec.index=tmp_spec.wl
+        raw_spec={}
+        tmpstamp=[]
+        for i in tmp_spec.columns:
+            
+            if i!='wl':
+                print(i)
+                raw_spec[i]=tmp_spec.filter(items=['wl',i])
+                raw_spec[i].columns=['wl','A']
+                raw_spec[i].index=raw_spec[i].wl
+                print()
+                # GenPanel.list_spec.loc[i,'file_name']=i
+                if 'dark' in i :
+                    tmpstamp.append(1)
+                elif re.search(r'__\d+__', i):
+                    print('THERE WE GO')
+                    tmpstamp.append(int(re.search(r'__\d+__', i)[0].replace('_','')))
+                else :
+                    # tmpstamps.append(int(max(re.findall(r'\d+us', i), key = len)[0:-2])#longest_digit_sequence(file_name)
+                    try:
+                        tmpstamp.append(int(max(re.findall(r'\d+us', i), key=len)[0:-2]))
+                    except (ValueError, IndexError):
+                        tmpstamp.append(0)
+        tmpstamps=pd.DataFrame([tmpstamp], columns=list(tmp_spec.columns)[1:],index=['time'])
+        print(tmpstamps)
+        return(raw_spec, tmpstamps)
 
-    with open(file_path, 'r') as file:
-        for line in file:
-            # Check if line starts with a number and contains delimiter
-            cter=0
-            nodigit=0
-            for i in line[0:10]:
-                if i.isdigit() or i == delimiter or i == decimal: 
-                    cter+=1
-                else:
-                    nodigit+=1
-            if cter > nodigit:
-                    temp_file.write(line)
-    
-    temp_file.close()
+    else:
+        delimiter_list=[]
+        decimal_list=[]
+        with open(file_path, 'r') as infile:
+            for line in infile:
+                # print(';  ' in line)
+                separator, dec = guess_separator(line)
+                # print(separator, dec)
+            # print(separator)
+                delimiter_list.append(separator)
+                decimal_list.append(dec)
+        counter = Counter(delimiter_list)
+        most_common = counter.most_common(1)
+        delimiter=most_common[0][0]
+        
+        counter = Counter(decimal_list)
+        most_common = counter.most_common(1)
+        decimal=most_common[0][0]
+        
+        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
 
-    
-    
-    raw_scan = pd.read_csv(temp_file.name, 
-                     delimiter=delimiter,
-                     decimal=decimal,
-                     # names=['wl','A'],
-                     engine="python",
-                     header=None)
-    raw_scan.columns = ['wl','dark','ref'] + [f'scan{i+1}' for i in range(len(raw_scan.columns) - 3)]
-    raw_scan.index = raw_scan.wl
-    
-    with open(file_path, 'r') as infile:
-        # with open(output_file, 'w') as outfile:
-        content=infile.read()
-        if 'Measurement mode: Scope' in content and '1204051U1' in content:
-            print('CALAIDOSCOPE scope spectrum')
-            timestamps=pd.read_csv(file_path, header=None, sep=';', skiprows=9, nrows=1, names=raw_scan.columns)
-            # tmpstamp=tmpstamp.iloc[:,3:]
-            # np.array(tmpstamp[0])
-    return Absorbance_multiscan(raw_scan), timestamps
+        with open(file_path, 'r') as file:
+            for line in file:
+                # Check if line starts with a number and contains delimiter
+                cter=0
+                nodigit=0
+                for i in line[0:10]:
+                    if i.isdigit() or i == delimiter or i == decimal: 
+                        cter+=1
+                    else:
+                        nodigit+=1
+                if cter > nodigit:
+                        temp_file.write(line)
+        
+        temp_file.close()
+
+        
+        
+        raw_scan = pd.read_csv(temp_file.name, 
+                         delimiter=delimiter,
+                         decimal=decimal,
+                         # names=['wl','A'],
+                         engine="python",
+                         header=None)
+        raw_scan.columns = ['wl','dark','ref'] + [f'scan{i+1}' for i in range(len(raw_scan.columns) - 3)]
+        raw_scan.index = raw_scan.wl
+        
+        with open(file_path, 'r') as infile:
+            # with open(output_file, 'w') as outfile:
+            content=infile.read()
+            if 'Measurement mode: Scope' in content and '1204051U1' in content:
+                print('CALAIDOSCOPE scope spectrum')
+                timestamps=pd.read_csv(file_path, header=None, sep=';', skiprows=9, nrows=1, names=raw_scan.columns)
+                # tmpstamp=tmpstamp.iloc[:,3:]
+                # np.array(tmpstamp[0])
+        return Absorbance_multiscan(raw_scan), timestamps
 
 
 class GenPanel(wx.Panel):
@@ -974,7 +1005,7 @@ class RightPanel(GenPanel):
                       linewidth=2, 
                       style='line',
                       marker=None,markersize=0,
-                      color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
+                      ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
                       title = 'Difference spectrum') 
             #     self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.')
             else :
@@ -982,7 +1013,7 @@ class RightPanel(GenPanel):
                 self.plot_panel.oplot(np.array(GenPanel.diffspec.wl),                  
                         np.array(GenPanel.diffspec.A) ,                   
                         linewidth=2, 
-                        color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
+                        ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
                         title = 'Difference spectrum') 
                     
             n=n+1
@@ -1840,15 +1871,15 @@ class TabOne(wx.Panel):
     def on_diff_spec(self, event):
         file_chooser = FileChooser(self, "Choose Two Files", 2, list(GenPanel.raw_spec.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
-            selections = file_chooser.check_list_box.GetCheckedStrings()
-            print(selections)
+            GenPanel.diff_selections = file_chooser.check_list_box.GetCheckedStrings()
+            print(GenPanel.diff_selections)
             # print(GenPanel.list_spec.index)
             # sorting the selection from late to early
             sele_timecode=[]
-            sele_timecode.append(GenPanel.list_spec.time_code[selections[0]])
-            sele_timecode.append(GenPanel.list_spec.time_code[selections[1]])
+            sele_timecode.append(GenPanel.list_spec.time_code[GenPanel.diff_selections[0]])
+            sele_timecode.append(GenPanel.list_spec.time_code[GenPanel.diff_selections[1]])
             print(sele_timecode)
-            self.sorted_selections = [x for _, x in sorted(zip(sele_timecode, selections), key=lambda pair: pair[0], reverse=True)]
+            self.sorted_selections = [x for _, x in sorted(zip(sele_timecode, GenPanel.diff_selections), key=lambda pair: pair[0], reverse=True)]
             print(self.sorted_selections)
             
             print(self.typecorr)
@@ -1933,11 +1964,16 @@ class TabOne(wx.Panel):
         # wavelength = str(self.field_timetrace.GetValue())
         # GenPanel.list_spec.to_csv(file_path + 'time-trace_' + wavelength + '_nm.csv', index=True)
         
-        self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
-        self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
-        self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
+        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
+        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
+        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
         print("Figure saved at: " + file_path + file_name + '.png')
         
+        
+        
+        if hasattr(GenPanel, 'diffspec') : #check if a difference spectrum exists 
+            GenPanel.diffspec.to_csv( 'diff_' +  GenPanel.diff_selections[0] +'-' + GenPanel.diff_selections[1] + ".csv")
+            print('difference spectrum saved to:' + 'diff_' +  GenPanel.diff_selections[0] +'-' + GenPanel.diff_selections[1] + ".csv")
         
     def update_right_panel(self, typecorr):
         if len(self.field_topeak.GetValue()) == 0:
@@ -2448,48 +2484,49 @@ class TabTwo(wx.Panel):
             towrite_ready_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
         wavelength = str(self.GetParent().GetParent().tab2.field_timetrace.GetValue())
         GenPanel.list_spec.to_csv(file_path + 'time-trace_' + wavelength + '_nm.csv', index=True)
+        if len(self.scaled_spec_lSV)>0:
+            # try:
+            tmp={}
+            for i in range(len(self.scaled_time_factors)):
+                tmp['rSV'+str(i)]=self.scaled_time_factors[i]
+            pd.DataFrame(data=tmp,index=GenPanel.list_spec.index[1:]).to_csv(file_path + file_name + '_rSV.csv',index=True)
+            
+            
+            n=len(GenPanel.raw_spec)-1
+            laser_blue = GenPanel.list_spec.laser_dent_blue.min()
+            laser_red = GenPanel.list_spec.laser_dent_red.max()
+            tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
+            self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
+            
+            
+            tmp={}
+            for i in range(len(self.scaled_spec_lSV)):
+                tmp['lSV'+str(i)]=self.scaled_spec_lSV[:,i]
+            pd.DataFrame(data=tmp,index=GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]).to_csv(file_path + file_name + '_rSV.csv',index=True)
+            
+            # except NameError:
+                # print('no SVD results to save')
+            
+            print(self.scaled_time_factors)
+            print('separator')
+            print(self.scaled_spec_lSV)
+            
+            # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
+            # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
+            # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
+            # print("Figure saved at: " + file_path + file_name + '.png')
+            n=len(GenPanel.raw_spec)-1
+            self.rSV=pd.DataFrame(index=GenPanel.list_spec.time_code[1:], columns=['SV' + str(i) for i in range(n+1)])
+            laser_blue = GenPanel.list_spec.laser_dent_blue.min()
+            laser_red = GenPanel.list_spec.laser_dent_red.max()
+            tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
+            self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
+            for i in range(0,n):
+                self.rSV['SVn'+str(i)]=self.scaled_time_factors[i]
+                self.lSV['SVn'+str(i)]=self.scaled_spec_lSV[:,i] 
+            self.rSV.to_csv(file_path + 'time-SV.csv', index=True)
+            self.lSV.to_csv(file_path + 'spec-SV.csv', index=True)
         
-        # try:
-        tmp={}
-        for i in range(len(self.scaled_time_factors)):
-            tmp['rSV'+str(i)]=self.scaled_time_factors[i]
-        pd.DataFrame(data=tmp,index=GenPanel.list_spec.index[1:]).to_csv(file_path + file_name + '_rSV.csv',index=True)
-        
-        
-        n=len(GenPanel.raw_spec)-1
-        laser_blue = GenPanel.list_spec.laser_dent_blue.min()
-        laser_red = GenPanel.list_spec.laser_dent_red.max()
-        tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
-        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
-        
-        
-        tmp={}
-        for i in range(len(self.scaled_spec_lSV)):
-            tmp['lSV'+str(i)]=self.scaled_spec_lSV[:,i]
-        pd.DataFrame(data=tmp,index=GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]).to_csv(file_path + file_name + '_rSV.csv',index=True)
-        
-        # except NameError:
-            # print('no SVD results to save')
-        
-        print(self.scaled_time_factors)
-        print('separator')
-        print(self.scaled_spec_lSV)
-        
-        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
-        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
-        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
-        # print("Figure saved at: " + file_path + file_name + '.png')
-        n=len(GenPanel.raw_spec)-1
-        self.rSV=pd.DataFrame(index=GenPanel.list_spec.time_code[1:], columns=['SV' + str(i) for i in range(n+1)])
-        laser_blue = GenPanel.list_spec.laser_dent_blue.min()
-        laser_red = GenPanel.list_spec.laser_dent_red.max()
-        tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
-        self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
-        for i in range(0,n):
-            self.rSV['SVn'+str(i)]=self.scaled_time_factors[i]
-            self.lSV['SVn'+str(i)]=self.scaled_spec_lSV[:,i] 
-        self.rSV.to_csv(file_path + 'time-SV.csv', index=True)
-        self.lSV.to_csv(file_path + 'spec-SV.csv', index=True)
         
 
     def update_right_panel(self, typecorr):
