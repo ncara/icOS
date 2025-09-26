@@ -1574,21 +1574,22 @@ class TabOne(wx.Panel):
             if dialog.ShowModal() == wx.ID_OK:
                 file_paths = dialog.GetPaths()
                 if self.GetParent().GetParent().tab1.averaging_checkbox.GetValue():
-                    print('averaging spectra')
+                    print(f'averaging {len(file_paths)} spectra')
                     toaverage={}
                     for file_path in file_paths:
-                         pathtospec=''
-                        
                          tmpname = file_path.split(dirsep)[-1]
                          name_correct = file_path.split(dirsep)[-1][0:-4]
                          toaverage[name_correct]=universal_opener(file_path)
                     #define avg name
                     name_correct=name_correct+'_avg' #so that the avg can be compared to all spectra without confusion
                     #add averaged spectrum to raw_spec
-                    print(toaverage.keys())
-                    tmp=toaverage[list(toaverage.keys())[0]]
+                    print(toaverage.keys(), len(toaverage.keys()))
+                    tmp=toaverage[list(toaverage.keys())[0]].copy()
+                    tmp.index=tmp.wl
                     tmp.A=0
                     for spec in toaverage:
+                        # print(f"averaging {spec}")
+                        # print(toaverage[spec][toaverage[spec].wl.between(379,381)].A)
                         tmp.A+=toaverage[spec].A
                     tmp.A=tmp.A/len(toaverage.keys())
                     GenPanel.raw_spec[name_correct]=tmp
