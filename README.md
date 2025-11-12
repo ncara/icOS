@@ -34,10 +34,10 @@ The first run of the script might produce an error right after having installed 
 
 ### Creating a conda environment for the toolbox.
 
-If you wish to encase the toolbox in a conda environment, all dependencies can be installed through conda with the following command
+If you wish to encase the toolbox in a conda environment, a suitable version of python, as well as all dependencies can be installed through conda with the following command
 
 ```bash
-conda create -n icOS-toolbox python conda-forge::wxmplot seaborn numpy scipy pandas 
+conda create -n icOS-toolbox python=3.11 conda-forge::wxmplot seaborn numpy scipy pandas 
 ```
 
 If the wxmplot package is not found, it might be because your conda install doesn't have access to the conda-forge channel. This can be fixed by running: 
