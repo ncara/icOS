@@ -696,7 +696,7 @@ class Modified_plot_panel(PlotPanel):
     def __init__(self, parent):
         PlotPanel.__init__(self, parent, dpi=150, fontsize=3,size=(700, 700))
     
-    def plot_many_modified(self, datalist, side='left', title=None,
+    def plot_many_modified(self, datalist, side='left', title=None,palin='Spectral',
                   xlabel=None, ylabel=None, show_legend=False, zoom_limits=None, **kws):
         """
         plot many traces at once, taking a list of (x, y) pairs, with lines and a spectral palette
@@ -728,7 +728,7 @@ class Modified_plot_panel(PlotPanel):
             ncols = len(linecolors)
             for i in range(nplot_traces, nplot_request+5):
                 conf.init_trace(i,  linecolors[i%ncols], 'dashed')
-        palette = [rgb_to_hex(x) for x in sns.color_palette(palette='Spectral', n_colors=len(datalist))]
+        palette=[rgb_to_hex(x) for x in sns.color_palette(palette=palin, n_colors=len(datalist))]
         self.plot(x0, y0, markersize=0, color=palette[0], style='line', fill=False,  **opts)
         i=1
         for dat in datalist[1:]:
@@ -826,9 +826,9 @@ class RightPanel(GenPanel):
 #TODO change the plotting option to add a way to change the plot function to plot-many when there are more than 100 curves
     def plot_data(self,typecorr,scaling_top):
         self.plot_panel.clear()
-
-        if self.GetParent().left_panel.tab1.TRicOS_checkbox.GetValue() :
-            pal='Spectral'
+        
+        if self.GetParent().left_panel.tab3.red_to_blue_checkbox.GetValue() :
+            pal='Spectral_r'
         else :
             pal='Spectral'
             
@@ -904,7 +904,7 @@ class RightPanel(GenPanel):
                                         color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')   
                 n=n+1
             if len(GenPanel.raw_spec) > 30 :
-                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')
+                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal)
   
         elif typecorr == 'const':
             self.plot_panel.clear()
@@ -948,7 +948,7 @@ class RightPanel(GenPanel):
                             
                 n=n+1
             if len(GenPanel.const_spec) > 30 :
-                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')
+                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal)
      
         
         elif typecorr == 'ready':
@@ -994,7 +994,7 @@ class RightPanel(GenPanel):
                                     color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
                 n=n+1
             if len(GenPanel.ready_spec) > 30:
-                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')
+                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal)
         elif typecorr == 'diff':            
             self.plot_panel.clear()
 
@@ -1071,8 +1071,8 @@ class RightPanel(GenPanel):
             laser_blue=GenPanel.list_spec.laser_dent_blue.min()
             laser_red=GenPanel.list_spec.laser_dent_red.max()
             tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]]
-    
-            palette=sns.color_palette(palette='Spectral', n_colors=min(5,len(GenPanel.raw_spec)))   
+            palette=sns.color_palette(palette=pal, n_colors=min(5,len(GenPanel.raw_spec)))
+             
             list_toplot=[]
             for i in range(0,min(5,len(GenPanel.raw_spec)-1)):
                 if len(GenPanel.raw_spec) > 30:
@@ -1092,9 +1092,9 @@ class RightPanel(GenPanel):
             if len(GenPanel.raw_spec)> 30 :
                 self.plot_panel.plot_many_modified(datalist=list_toplot, title = 'left Singular Vectors',
                                                    xlabel = 'Wavelength [nm]', 
-                                                   ylabel = 'Absorbance [AU]')
+                                                   ylabel = 'Absorbance [AU]', palin=pal)
         elif typecorr == 'diffserie' :
-            palette=sns.color_palette(palette='Spectral', n_colors=len(GenPanel.raw_spec))
+            palette=sns.color_palette(palette=pal, n_colors=len(GenPanel.raw_spec))
             self.plot_panel.clear()
             i=0
             list_toplot=[]
@@ -1118,7 +1118,7 @@ class RightPanel(GenPanel):
                 self.plot_panel.plot_many_modified(datalist=list_toplot, 
                                                    title = 'Difference spectra series',
                                                    xlabel = 'Wavelength [nm]', 
-                                                   ylabel = 'Absorbance [AU]',)
+                                                   ylabel = 'Absorbance [AU]', palin=pal)
         elif typecorr == 'quality_plot': #TODO introduce a fix for this plot by creating a custom plotting function with a color list as one of the intakes
             self.plot_panel.clear()
             chosen_spectrum = self.GetParent().left_panel.tab3.selection
@@ -2371,6 +2371,10 @@ class TabTwo(wx.Panel):
         self.update_right_panel('2D_plot')
         
     def on_SVD(self, event):
+        if self.GetParent().GetParent().tab3.red_to_blue_checkbox.GetValue():
+            pal='Spectral_r'
+        else:
+            pal='Spectral'
         # if GenPanel.list_spec.laser_blue.isnull().all():
             # tokeep_dark = 
         # if ~all([x == None for x in GenPanel.list_spec.laser_dent_blue]) :
@@ -2455,8 +2459,8 @@ class TabTwo(wx.Panel):
         dose=float(self.abcisse_field.GetValue())
         
         
-        
-        palette=sns.color_palette(palette='Spectral', n_colors=min(5,len(self.scaled_time_factors)))   
+        palette=sns.color_palette(palette=pal, n_colors=min(5,len(self.scaled_time_factors)))
+         
         for i in range(0,min(5,len(self.scaled_time_factors))):
             wi.plot(dose*np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]), 
                     marker='o',
@@ -2581,12 +2585,14 @@ class TabThree(wx.Panel):
         smoothwindowsizer = wx.BoxSizer(wx.VERTICAL)
         self.smooth_window_label = wx.StaticText(self, label = 'Smoothing window' , style = wx.ALIGN_CENTER)
         self.smooth_window_field = wx.TextCtrl(self, value = '21', style = wx.TE_CENTER)
+        self.red_to_blue_checkbox = wx.CheckBox(self, label = 'Blue to red ?', style = wx.CHK_2STATE)
         smoothwindowsizer.Add(self.smooth_window_label, 1 , wx.ALIGN_CENTER)
         smoothwindowsizer.Add(self.smooth_window_field, 1 , wx.ALIGN_CENTER)
+        smoothwindowsizer.Add(self.red_to_blue_checkbox, 1 , wx.ALIGN_CENTER)
         
         smoothsizer.Add(smoothwindowsizer, 1, wx.EXPAND)
         
-        
+       
         
         sizer.Add(smoothsizer, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
         

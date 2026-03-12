@@ -7,9 +7,12 @@ I intend to make the toolbox as broadly available as possible. If your files are
 The toolbox is now published in Journal of Applied Crystallography, please cite it if you used it for your paper: https://journals.iucr.org/j/issues/2025/03/00/jo5121/
 
 
-
-
 It consists in three tabs: (a) the main tab, where spectra can be corrected and plotted ; (b) the kinetic tab, where kinetic curve, difference spectra, and singular value decomposition can be calculated, and lastly the expert tab, where the smoothing, modelling and correction settings can be finely adjusted. Finally, by right-clicking a plot and selecting the ‘configuration’ option, a plot-customisation window can be accessed. 
+
+# New features !
+
+You can now plot spectra from blue to red instead of red to blue, by ticking the 'red to blue' checkbox in the Expert Settings tab !
+
 
 # Installation
 
