@@ -504,33 +504,41 @@ def guess_separator(line):
     return guessed_separator, guessed_decimal
 
 def universal_opener(file_path):
-    
+    encoding_for_file='utf-8'
     delimiter_list=[]
     decimal_list=[]
-    with open(file_path, 'r') as infile:
-        # with open(output_file, 'w') as outfile:
-        content=infile.read()
-        if 'JASCO' in content:
-            print('JASCO spectrum')
-            with open(file_path, 'r') as infile:
-                linecounter=0
-                for line in infile:
-                    separator, dec = guess_separator(line)
-                    if linecounter>20 and linecounter < content.count('\n')-47:
-                        delimiter_list.append(separator)
-                        decimal_list.append(dec)
-                    linecounter+=1
-            
-        else:
-            with open(file_path, 'r') as infile:
-                for line in infile:
-                
-                    separator, dec = guess_separator(line)
-                # print(separator)
+    for encoding_for_file in ['utf-8', 'latin-1']:
+        try:
+            with open(file_path, 'r', encoding=encoding_for_file) as infile:
+                content = infile.read()
+            print(f"Successfully read file with encoding: {encoding_for_file}")
+            break
+        except UnicodeDecodeError:
+            print(f"Failed with {encoding_for_file}, trying next...")
+            continue
+    
+    if 'JASCO' in content:
+        print('JASCO spectrum')
+        with open(file_path, 'r', encoding=encoding_for_file) as infile:
+            linecounter=0
+            for line in infile:
+                separator, dec = guess_separator(line)
+                if linecounter>20 and linecounter < content.count('\n')-47:
                     delimiter_list.append(separator)
                     decimal_list.append(dec)
-                # print(separator)
-
+                linecounter+=1
+        
+    else:
+        with open(file_path, 'r', encoding=encoding_for_file) as infile:
+            for line in infile:
+            
+                separator, dec = guess_separator(line)
+            # print(separator)
+                delimiter_list.append(separator)
+                decimal_list.append(dec)
+            # print(separator)
+    
+    
     counter = Counter(delimiter_list)
     most_common = counter.most_common(1)
     delimiter=most_common[0][0]
@@ -543,7 +551,7 @@ def universal_opener(file_path):
     # Temporary file to store filtered lines
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
 
-    with open(file_path, 'r') as file:
+    with open(file_path, 'r', encoding=encoding_for_file) as file:
         for line in file:
             # Check if line starts with a number and contains delimiter
             if line[0].isdigit() and delimiter in line and decimal in line:
@@ -595,62 +603,111 @@ def multiscan_opener(file_path):
         return(raw_spec, tmpstamps)
 
     else:
-        delimiter_list=[]
-        decimal_list=[]
-        with open(file_path, 'r') as infile:
-            for line in infile:
-                # print(';  ' in line)
-                separator, dec = guess_separator(line)
-                # print(separator, dec)
-            # print(separator)
-                delimiter_list.append(separator)
-                decimal_list.append(dec)
-        counter = Counter(delimiter_list)
-        most_common = counter.most_common(1)
-        delimiter=most_common[0][0]
-        
-        counter = Counter(decimal_list)
-        most_common = counter.most_common(1)
-        decimal=most_common[0][0]
-        
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-
-        with open(file_path, 'r') as file:
-            for line in file:
-                # Check if line starts with a number and contains delimiter
-                cter=0
-                nodigit=0
-                for i in line[0:10]:
-                    if i.isdigit() or i == delimiter or i == decimal: 
-                        cter+=1
-                    else:
-                        nodigit+=1
-                if cter > nodigit:
-                        temp_file.write(line)
-        
-        temp_file.close()
-
-        
-        
-        raw_scan = pd.read_csv(temp_file.name, 
-                         delimiter=delimiter,
-                         decimal=decimal,
-                         # names=['wl','A'],
-                         engine="python",
-                         header=None)
-        raw_scan.columns = ['wl','dark','ref'] + [f'scan{i+1}' for i in range(len(raw_scan.columns) - 3)]
-        raw_scan.index = raw_scan.wl
-        
         with open(file_path, 'r') as infile:
             # with open(output_file, 'w') as outfile:
             content=infile.read()
             if 'Measurement mode: Scope' in content and '1204051U1' in content:
                 print('CALAIDOSCOPE scope spectrum')
-                timestamps=pd.read_csv(file_path, header=None, sep=';', skiprows=9, nrows=1, names=raw_scan.columns)
+                
                 # tmpstamp=tmpstamp.iloc[:,3:]
                 # np.array(tmpstamp[0])
-        return Absorbance_multiscan(raw_scan), timestamps
+                delimiter_list=[]
+                decimal_list=[]
+                with open(file_path, 'r') as infile:
+                    for line in infile:
+                        # print(';  ' in line)
+                        separator, dec = guess_separator(line)
+                        # print(separator, dec)
+                    # print(separator)
+                        delimiter_list.append(separator)
+                        decimal_list.append(dec)
+                counter = Counter(delimiter_list)
+                most_common = counter.most_common(1)
+                delimiter=most_common[0][0]
+                
+                counter = Counter(decimal_list)
+                most_common = counter.most_common(1)
+                decimal=most_common[0][0]
+                
+                temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
 
+                with open(file_path, 'r') as file:
+                    for line in file:
+                        # Check if line starts with a number and contains delimiter
+                        cter=0
+                        nodigit=0
+                        for i in line[0:10]:
+                            if i.isdigit() or i == delimiter or i == decimal: 
+                                cter+=1
+                            else:
+                                nodigit+=1
+                        if cter > nodigit:
+                                temp_file.write(line)
+                
+                temp_file.close()
+
+                
+                
+                raw_scan = pd.read_csv(temp_file.name, 
+                                 delimiter=delimiter,
+                                 decimal=decimal,
+                                 # names=['wl','A'],
+                                 engine="python",
+                                 header=None)
+                raw_scan.columns = ['wl','dark','ref'] + [f'scan{i+1}' for i in range(len(raw_scan.columns) - 3)]
+                raw_scan.index = raw_scan.wl
+                timestamps=pd.read_csv(file_path, header=None, sep=';', skiprows=9, nrows=1, names=raw_scan.columns)
+                return Absorbance_multiscan(raw_scan), timestamps
+            else: 
+                print('Custom ?') #TODO add a tickbox for whether the data is counts or absorbance 
+                delimiter_list=[]
+                decimal_list=[]
+                with open(file_path, 'r') as infile:
+                    for line in infile:
+                        # print(';  ' in line)
+                        separator, dec = guess_separator(line)
+                        # print(separator, dec)
+                    # print(separator)
+                        delimiter_list.append(separator)
+                        decimal_list.append(dec)
+                counter = Counter(delimiter_list)
+                most_common = counter.most_common(1)
+                delimiter=most_common[0][0]
+                
+                counter = Counter(decimal_list)
+                most_common = counter.most_common(1)
+                decimal=most_common[0][0]
+                temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+                with open(file_path, 'r') as file:
+                    for line in file:
+                        # Check if line starts with a number and contains delimiter
+                        cter=0
+                        nodigit=0
+                        for i in line[0:10]:
+                            if i.isdigit() or i == delimiter or i == decimal: 
+                                cter+=1
+                            else:
+                                nodigit+=1
+                        if cter > nodigit:
+                                temp_file.write(line)
+                
+                temp_file.close()
+
+                
+                
+                raw_abs = pd.read_csv(temp_file.name, 
+                                 delimiter=delimiter,
+                                 decimal=decimal,
+                                 # names=['wl','A'],
+                                 engine="python",
+                                 header=0)
+                raw_abs.columns = ['wl',] + list(raw_abs.columns)[1:]
+                raw_abs.index = raw_abs.wl
+                raw_spec=dict([(str(i),raw_abs[['wl',i]]) for i in list(raw_abs.columns)[1:]]) #making it compatible with toolbox architecture by stuffing it into a dict
+                for i in raw_spec.keys():
+                    raw_spec[i].columns=['wl','A']
+                timestamps=dict([(str(i),float(re.sub(',','.',max(re.findall(r'[\d,.]+', i), key=len)))) for i in list(raw_abs.columns)[1:]])
+                return raw_spec, timestamps
 
 class GenPanel(wx.Panel):
     raw_lamp={}
@@ -1560,7 +1617,7 @@ class TabOne(wx.Panel):
                             GenPanel.list_spec.loc[spec,'Abs']=GenPanel.raw_spec[spec].loc[min(GenPanel.raw_spec[spec]['wl'], key=lambda x: abs(x - 280)),'A']
                             GenPanel.list_spec.loc[spec,'laser_dent_blue']=np.nan
                             GenPanel.list_spec.loc[spec, 'laser_dent_red']=np.nan
-                            GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec][0]
+                            GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec]
                     
                     print(f"File '{spec}' added to dictionary with data: {GenPanel.raw_spec[spec].A}")
                 # print(GenPanel.list_spec)
