@@ -361,6 +361,24 @@ def parse_float(s):
         raise ValueError("non-finite")
     return x
 
+
+def validated_savgol_window(raw_value, polyorder=3, default=21):
+    """
+    Coerce a user-supplied smoothing-window value into a valid Savitzky-Golay
+    window length. Savgol requires window_length > polyorder and odd.
+    Falls back to ``default`` on invalid input.
+    """
+    try:
+        w = int(float(str(raw_value).replace(",", ".")))
+    except (ValueError, TypeError):
+        print(f"Invalid smoothing window '{raw_value}', using default {default}")
+        return default
+    if w <= polyorder:
+        w = polyorder + 2
+    if w % 2 == 0:  # must be odd
+        w += 1
+    return w
+
 def Absorbance(tmp):
     """
     Function to calculate Absorbance from spectral data.
@@ -385,22 +403,18 @@ def Absorbance(tmp):
         print('avantes Absorbance saved for spectrum')
         # If 'A' column exists, return DataFrame without 'I', 'bgd', and 'I0' columns
         return ourdata.drop(columns=['I', 'bgd', "I0"]).copy()
-    else:
-        # If 'A' column does not exist, calculate Absorbance and store in 'A' column
-        ourdata['Absor'] = None
-        for wl in ourdata.index:
-            tmpdat = float(ourdata.I[wl] - ourdata.bgd[wl])
-            tmpref = float(ourdata.I0[wl] - ourdata.bgd[wl])
-            if tmpref == 0:  # Prevent division by zero
-                tmpAbs = 0
-            elif tmpdat / tmpref < 0:
-                tmpAbs = 0
-            else:
-                tmpAbs = -np.log(tmpdat / tmpref)
-            ourdata.loc[wl, 'A'] = tmpAbs  # Store calculated Absorbance value in 'A' column
 
-        # Return DataFrame without 'I', 'bgd', and 'I0' columns
-        return ourdata.drop(columns=['I', 'bgd', "I0"]).copy()
+    # Vectorized Absorbance computation: A = -log10((I - bgd) / (I0 - bgd))
+    # Invalid pixels (divide-by-zero or negative ratio) become NaN so they
+    # are visibly flagged to the user rather than silently clipped to zero.
+    numer = ourdata['I'].astype(float) - ourdata['bgd'].astype(float)
+    denom = ourdata['I0'].astype(float) - ourdata['bgd'].astype(float)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ratio = numer / denom
+        ratio = ratio.where((denom != 0) & (ratio > 0))  # invalid -> NaN
+        ourdata['A'] = -np.log10(ratio)
+
+    return ourdata.drop(columns=['I', 'bgd', "I0"]).copy()
 
 
 def Absorbance_multiscan(tmp): #TODO
@@ -421,30 +435,28 @@ def Absorbance_multiscan(tmp): #TODO
     """
 
     ourdata = tmp.copy()
-    # print(ourdata.columns)
-    wl=ourdata.index[0]
-    print(ourdata['ref']-ourdata['dark'])
-    print(ourdata['dark'][wl])
-    # print(ourdata.index)
-    # Check if 'A' column exists in DataFrame
 
-    for wl in ourdata.index:
-        tmpref = ourdata['ref'][wl] - ourdata['dark'][wl]
-        for i in ourdata.columns[3:]:
-            tmpdat = ourdata[i][wl] - ourdata['dark'][wl]
-            if tmpref == 0:  # Prevent division by zero
-                tmpAbs = 0
-            elif tmpdat / tmpref < 0:
-                tmpAbs = 0
-            else:
-                tmpAbs = -np.log(tmpdat / tmpref)
-            ourdata.loc[wl, i] = tmpAbs  # Store calculated Absorbance value in 'A' column
-    ourdata.drop(columns=['dark', 'ref'], inplace=True)
-    raw_spec={}
-    for i in ourdata.columns[3:]:
-        raw_spec[i]=ourdata[['wl',i]]
-        raw_spec[i].columns=['wl','A']
-        # Return a dictionary containing DataFrames with 'wl' and 'A' as columns
+    # Layout on entry: ['wl', 'dark', 'ref', scan1, scan2, ...]
+    scan_cols = list(ourdata.columns[3:])
+    dark = ourdata['dark'].astype(float)
+    ref = ourdata['ref'].astype(float)
+    denom = ref - dark
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        for col in scan_cols:
+            numer = ourdata[col].astype(float) - dark
+            ratio = numer / denom
+            ratio = ratio.where((denom != 0) & (ratio > 0))  # invalid -> NaN
+            ourdata[col] = -np.log10(ratio)
+
+    ourdata = ourdata.drop(columns=['dark', 'ref'])
+
+    # After drop, remaining columns are ['wl', scan1, scan2, ...]; split each
+    # scan into its own {'wl','A'} DataFrame for toolbox compatibility.
+    raw_spec = {}
+    for col in scan_cols:
+        raw_spec[col] = ourdata[['wl', col]].copy()
+        raw_spec[col].columns = ['wl', 'A']
     return raw_spec
 
 
@@ -912,7 +924,7 @@ class RightPanel(GenPanel):
                         
                         label=i +" mass center = " +format(centroids[i], '.3f'), 
                         color=rgb_to_hex(palette[n])) 
-                    self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix this
+                    self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
                 else:
                                         
                             if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top != 0 :
@@ -984,7 +996,7 @@ class RightPanel(GenPanel):
                                                       marker=None,markersize=0,
                                                       label=i+" mass center = " +format(centroids[i], '.3f'), 
                                                       color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                            self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix this
+                            self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
                     else :
                         if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() and scaling_top != 0 :
                             self.plot_panel.oplot(np.array(GenPanel.const_spec[i].wl),
@@ -1031,7 +1043,7 @@ class RightPanel(GenPanel):
                               marker=None,markersize=0,
                               label=i +" mass center = " +format(centroids[i], '.3f'), 
                               color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                        self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix this
+                        self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
                     else :
                         if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() and scaling_top != 0 :
                             self.plot_panel.oplot(np.array(GenPanel.ready_spec[i].wl),                  
@@ -1482,25 +1494,24 @@ class TabOne(wx.Panel):
                             GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[file_name].wl
                             
                             
-                    average_signal=GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].copy()
-                    average_signal.I=0
+                    # Proper N-way arithmetic mean across all selected spectra.
+                    # The previous running-pairwise average ((avg + new)/2) was
+                    # biased: for N spectra it weighted later files more heavily.
+                    average_signal = GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].copy()
+                    average_signal['wl'] = floatize(average_signal.index)
+
+                    stack_I = pd.concat(
+                        [GenPanel.raw_lamp[name]['I'] for name in toaverage],
+                        axis=1,
+                    )
+                    average_signal['I'] = stack_I.mean(axis=1)
+
                     if isthereAbs:
-                        average_signal.A=0
-                    average_signal['wl']=floatize(average_signal.index)
-                    # print(GenPanel.raw_lamp.keys())
-                    
-                    for nomfich in toaverage:
-                        # print(nomfich)
-                        for wavelength in average_signal.wl:
-                            if average_signal.loc[wavelength,'I']==0:
-                                average_signal.loc[wavelength,'I']=GenPanel.raw_lamp[nomfich].loc[wavelength,'I']
-                            else:
-                                average_signal.loc[wavelength,'I']=(average_signal.loc[wavelength,'I']+GenPanel.raw_lamp[nomfich].loc[wavelength,'I'])/2
-                            if isthereAbs :
-                                if average_signal.loc[wavelength,'A']==0:
-                                    average_signal.loc[wavelength,'A']=GenPanel.raw_lamp[nomfich].loc[wavelength,'A']
-                                else:
-                                    average_signal.loc[wavelength,'A']=(average_signal.loc[wavelength,'A']+GenPanel.raw_lamp[nomfich].loc[wavelength,'A'])/2
+                        stack_A = pd.concat(
+                            [GenPanel.raw_lamp[name]['A'] for name in toaverage],
+                            axis=1,
+                        )
+                        average_signal['A'] = stack_A.mean(axis=1)
                     # print(average_signal)
                     avgname=toaverage[0]#''.join(toaverage)
                     GenPanel.raw_spec[avgname]=Absorbance(average_signal.copy())
@@ -1756,12 +1767,20 @@ class TabOne(wx.Panel):
                 else:
                     tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
+                raw_window = self.GetParent().GetParent().tab3.smooth_window_field.GetValue()
                 if GenPanel.smoothing == 'savgol':
-                    tmp.A=signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                                                  window_length=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue()),  #This defines the section, longer sections means smoother data but also bigger imprecision self.GetParent().left_panel.tab3.smooth_window_field.GetValue()
-                                                  polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+                    window = validated_savgol_window(raw_window, polyorder=3)
+                    tmp.A = signal.savgol_filter(
+                        x=tmp.A.copy(),
+                        window_length=window,
+                        polyorder=3,
+                    )
                 elif GenPanel.smoothing == 'rolling':
-                    tmp.A = tmp.A.rolling(window=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue())).mean()
+                    try:
+                        window = max(1, int(float(str(raw_window).replace(",", "."))))
+                    except (ValueError, TypeError):
+                        window = 21
+                    tmp.A = tmp.A.rolling(window=window).mean()
             GenPanel.const_spec[i]=tmp.copy()
             GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
             print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
@@ -1782,12 +1801,20 @@ class TabOne(wx.Panel):
         for i in GenPanel.raw_spec :
             tmp=GenPanel.raw_spec[i].copy()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
+                raw_window = self.GetParent().GetParent().tab3.smooth_window_field.GetValue()
                 if GenPanel.smoothing == 'savgol':
-                    tmp.A=signal.savgol_filter(x=tmp.A.copy(),     #This is the smoothing function, it takes in imput the y-axis data directly and fits a polynom on each section of the data at a time
-                                                  window_length=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue()),  #This defines the section, longer sections means smoother data but also bigger imprecision
-                                                  polyorder=3)       #The order of the polynom, more degree = less smooth, more precise (and more ressource expensive)
+                    window = validated_savgol_window(raw_window, polyorder=3)
+                    tmp.A = signal.savgol_filter(
+                        x=tmp.A.copy(),
+                        window_length=window,
+                        polyorder=3,
+                    )
                 elif GenPanel.smoothing == 'rolling':
-                    tmp.A = tmp.A.rolling(window=int(self.GetParent().GetParent().tab3.smooth_window_field.GetValue())).mean()
+                    try:
+                        window = max(1, int(float(str(raw_window).replace(",", "."))))
+                    except (ValueError, TypeError):
+                        window = 21
+                    tmp.A = tmp.A.rolling(window=window).mean()
             rightborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()+20
             leftborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()
             segment1 = GenPanel.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
@@ -1808,7 +1835,9 @@ class TabOne(wx.Panel):
                 print(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)].max(skipna=True))
                 print(" ")
                 # print(forfit.A[segment2]-leewayfac*forfit.A[scaling_top-10:scaling_top+10].max())
-                forfit.A[segment2]-=leewayfac*float(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)].max(skipna=True))
+                forfit.loc[segment2.values, 'A'] -= leewayfac * float(
+                    forfit.A[forfit.wl.between(scaling_top-10, scaling_top+10)].max(skipna=True)
+                )
             else :
                 print(" ")
                 print(" ")
@@ -1817,7 +1846,9 @@ class TabOne(wx.Panel):
                 print(forfit.A[forfit.wl.between(310,800)].max(skipna=True))
                 print(" ")
                 # print(forfit[segment2]-leewayfac*forfit.A[310:800].max())
-                forfit.A[segment2]-=leewayfac*float(forfit.A[forfit.wl.between(310,800)].max(skipna=True))
+                forfit.loc[segment2.values, 'A'] -= leewayfac * float(
+                    forfit.A[forfit.wl.between(310, 800)].max(skipna=True)
+                )
             
             x=forfit.wl[segment].fillna(value=0).copy()
             y=forfit.A[segment].fillna(value=0).copy()
@@ -1884,68 +1915,87 @@ class TabOne(wx.Panel):
             n+=1
         self.update_right_panel(self.typecorr)
            
-    def mass_center(self, typecorr):  #make typecorr a global left panel value to handle the difference spectrum 
+    def mass_center(self, typecorr):
+        """
+        Compute the spectral centroid (intensity-weighted mean wavelength)
+        in a window around the current scaling-top peak, walking outward from
+        the peak while both (a) the absorbance stays above half-max and
+        (b) the running 25-point neighborhood minimum is not violated.
+
+        Parametrized over `typecorr` to avoid duplicating the algorithm
+        across raw / const / ready spectra dicts.
+        """
+        spec_dict = {
+            'raw': GenPanel.raw_spec,
+            'const': GenPanel.const_spec,
+            'ready': GenPanel.ready_spec,
+        }.get(typecorr)
+        if spec_dict is None:
+            return {}
+
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
         scaling_top = float(self.field_topeak.GetValue())
-        if typecorr == 'raw':
-            centroids={}
-            for i in GenPanel.raw_spec:
-                peakpos = float(GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(scaling_top-25,scaling_top+25)].idxmax())
-                half_max = (GenPanel.raw_spec[i].A[peakpos] - GenPanel.raw_spec[i].A[baseline_blue : baseline_red].mean()) / 2
-                seg = np.where(GenPanel.raw_spec[i].A > half_max + GenPanel.raw_spec[i].A[baseline_blue : baseline_red].mean())
-                n=0
-                # to the blue
-                area=[]
-                while list(GenPanel.raw_spec[i].index).index(peakpos)+n in seg[0] and GenPanel.raw_spec[i].A.iloc[list(GenPanel.raw_spec[i].index).index(peakpos)+n] > GenPanel.raw_spec[i].A.iloc[list(GenPanel.raw_spec[i].index).index(peakpos)+n:list(GenPanel.raw_spec[i].index).index(peakpos)+n+25].min():
-                    area.append(GenPanel.raw_spec[i].wl.iloc[list(GenPanel.raw_spec[i].index).index(peakpos)+n])
-                    n+=1
-                #to the red
-                n = 1
-                while list(GenPanel.raw_spec[i].index).index(peakpos)-n in seg[0] and GenPanel.raw_spec[i].A.iloc[list(GenPanel.raw_spec[i].index).index(peakpos)-n] > GenPanel.raw_spec[i].A.iloc[list(GenPanel.raw_spec[i].index).index(peakpos)-n-25:list(GenPanel.raw_spec[i].index).index(peakpos)-n].min():
-                    area.insert(0,GenPanel.raw_spec[i].wl.iloc[list(GenPanel.raw_spec[i].index).index(peakpos)-n])
-                    n+=1
-                a=np.sum(np.array(GenPanel.raw_spec[i].wl[area])*np.array(GenPanel.raw_spec[i].A[area])/np.sum(np.array(GenPanel.raw_spec[i].A[area])))
-                centroids[i] = a
-        elif typecorr == 'const' :
-            centroids={}
-            for i in GenPanel.const_spec:
-                peakpos = float(GenPanel.const_spec[i].A[GenPanel.const_spec[i].wl.between(scaling_top-25,scaling_top+25)].idxmax())
-                half_max = (GenPanel.const_spec[i].A[peakpos] - GenPanel.const_spec[i].A[baseline_blue : baseline_red].mean()) / 2
-                seg = np.where(GenPanel.const_spec[i].A > half_max + GenPanel.const_spec[i].A[baseline_blue : baseline_red].mean())
-                n=0
-                # to the blue
-                area=[]
-                while list(GenPanel.const_spec[i].index).index(peakpos)+n in seg[0] and GenPanel.const_spec[i].A.iloc[list(GenPanel.const_spec[i].index).index(peakpos)+n] > GenPanel.const_spec[i].A.iloc[list(GenPanel.const_spec[i].index).index(peakpos)+n:list(GenPanel.const_spec[i].index).index(peakpos)+n+25].min():
-                    area.append(GenPanel.const_spec[i].wl.iloc[list(GenPanel.const_spec[i].index).index(peakpos)+n])
-                    n+=1
-                #to the red
-                n = 1
-                while list(GenPanel.const_spec[i].index).index(peakpos)-n in seg[0] and GenPanel.const_spec[i].A.iloc[list(GenPanel.const_spec[i].index).index(peakpos)-n] > GenPanel.const_spec[i].A.iloc[list(GenPanel.const_spec[i].index).index(peakpos)-n-25:list(GenPanel.const_spec[i].index).index(peakpos)-n].min():
-                    area.insert(0,GenPanel.const_spec[i].wl.iloc[list(GenPanel.const_spec[i].index).index(peakpos)-n])
-                    n+=1
-                a=np.sum(np.array(GenPanel.const_spec[i].wl[area])*np.array(GenPanel.const_spec[i].A[area])/np.sum(np.array(GenPanel.const_spec[i].A[area])))
-                centroids[i] = a
-        elif typecorr == 'ready' :
-            centroids={}
-            for i in GenPanel.ready_spec:
-                peakpos = float(GenPanel.ready_spec[i].A[GenPanel.ready_spec[i].wl.between(scaling_top-25,scaling_top+25)].idxmax())
-                half_max = (GenPanel.ready_spec[i].A[peakpos] - GenPanel.ready_spec[i].A[baseline_blue : baseline_red].mean()) / 2
-                seg = np.where(GenPanel.ready_spec[i].A > half_max + GenPanel.ready_spec[i].A[baseline_blue : baseline_red].mean())
-                n=0
-                # to the blue
-                area=[]
-                while list(GenPanel.ready_spec[i].index).index(peakpos)+n in seg[0] and GenPanel.ready_spec[i].A.iloc[list(GenPanel.ready_spec[i].index).index(peakpos)+n] > GenPanel.ready_spec[i].A.iloc[list(GenPanel.ready_spec[i].index).index(peakpos)+n:list(GenPanel.ready_spec[i].index).index(peakpos)+n+25].min():
-                    area.append(GenPanel.ready_spec[i].wl.iloc[list(GenPanel.ready_spec[i].index).index(peakpos)+n])
-                    n+=1
-                #to the red
-                n = 1
-                while list(GenPanel.ready_spec[i].index).index(peakpos)-n in seg[0] and GenPanel.ready_spec[i].A.iloc[list(GenPanel.ready_spec[i].index).index(peakpos)-n] > GenPanel.ready_spec[i].A.iloc[list(GenPanel.ready_spec[i].index).index(peakpos)-n-25:list(GenPanel.ready_spec[i].index).index(peakpos)-n].min():
-                    area.insert(0,GenPanel.ready_spec[i].wl.iloc[list(GenPanel.ready_spec[i].index).index(peakpos)-n])
-                    n+=1
-                a=np.sum(np.array(GenPanel.ready_spec[i].wl[area])*np.array(GenPanel.ready_spec[i].A[area])/np.sum(np.array(GenPanel.ready_spec[i].A[area])))
-                centroids[i] = a
+
+        centroids = {}
+        for name, df in spec_dict.items():
+            A = df.A
+            wl = df.wl
+            # Peak position within the search window around scaling_top.
+            window_mask = wl.between(scaling_top - 25, scaling_top + 25)
+            if not window_mask.any():
+                continue
+            peakpos_label = A[window_mask].idxmax()
+
+            # Integer position of the peak; robust to float-index round-off.
+            try:
+                peak_i = df.index.get_loc(peakpos_label)
+            except KeyError:
+                # Fall back to nearest position if the label isn't exact.
+                peak_i = int(np.argmin(np.abs(df.index.values - peakpos_label)))
+
+            baseline_mean = A[wl.between(baseline_blue, baseline_red)].mean()
+            peak_val = A.iloc[peak_i]
+            half_max_thresh = baseline_mean + (peak_val - baseline_mean) / 2
+            above_half = np.where(A.values > half_max_thresh)[0]
+            above_set = set(above_half.tolist())
+
+            A_vals = A.values
+            wl_vals = wl.values
+            N = len(A_vals)
+            area_positions = [peak_i]
+
+            # Walk to higher-index side (red side for sorted ascending wl)
+            k = 1
+            while (peak_i + k) < N and (peak_i + k) in above_set:
+                end = min(N, peak_i + k + 25)
+                window_min = A_vals[peak_i + k : end].min()
+                if A_vals[peak_i + k] > window_min:
+                    area_positions.append(peak_i + k)
+                    k += 1
+                else:
+                    break
+
+            # Walk to lower-index side (blue side for sorted ascending wl)
+            k = 1
+            while (peak_i - k) >= 0 and (peak_i - k) in above_set:
+                start = max(0, peak_i - k - 25)
+                window_min = A_vals[start : peak_i - k].min() if start < peak_i - k else A_vals[peak_i - k]
+                if A_vals[peak_i - k] > window_min:
+                    area_positions.insert(0, peak_i - k)
+                    k += 1
+                else:
+                    break
+
+            area_positions = np.array(sorted(area_positions))
+            weights = A_vals[area_positions]
+            w_sum = weights.sum()
+            if w_sum == 0 or not np.isfinite(w_sum):
+                continue
+            centroids[name] = float(np.sum(wl_vals[area_positions] * weights) / w_sum)
+
         return centroids
+
 
         
     def on_diff_spec(self, event):
@@ -2568,7 +2618,7 @@ class TabTwo(wx.Panel):
             towrite_ready_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
         wavelength = str(self.GetParent().GetParent().tab2.field_timetrace.GetValue())
         GenPanel.list_spec.to_csv(file_path + 'time-trace_' + wavelength + '_nm.csv', index=True)
-        if len(self.scaled_spec_lSV)>0:
+        if hasattr(self, 'scaled_spec_lSV') and len(self.scaled_spec_lSV) > 0:
             # try:
             tmp={}
             for i in range(len(self.scaled_time_factors)):
