@@ -486,6 +486,45 @@ def longest_digit_sequence(input_string):
     return longest_sequence
 
 
+def extract_time_code(name):
+    """
+    Extract a time-code / ordering integer from a spectrum's base name.
+
+    Precedence (first match wins):
+      1. 'dark' anywhere in name           -> 1  (dark frame, sorts first)
+      2. longest <digits>us run            -> <digits>   (microseconds)
+      3. __<digits>__ marker               -> <digits>
+      4. longest pH<digits> run            -> <digits>   (pH series)
+      5. longest plain <digits> run        -> <digits>
+      6. nothing found                     -> 0
+
+    Callers should pass the base name (no extension, no path).
+    """
+    if 'dark' in name:
+        return 1
+    
+    for pattern, trim in (
+        (r'\d+us', slice(0, -2)),   # strip trailing 'us'
+        (r'pH\d+', slice(2, None)), # strip leading 'pH'
+    ):
+        hits = re.findall(pattern, name)
+        if hits:
+            try:
+                return int(max(hits, key=len)[trim])
+            except (ValueError, IndexError):
+                pass
+    m = re.search(r'__\d+__', name)
+    if m:
+        return int(m.group(0).replace('_', ''))
+    hits = re.findall(r'\d+', name)
+    if hits:
+        try:
+            return int(max(hits, key=len))
+        except (ValueError, IndexError):
+            pass
+    return 0
+
+
 
 
 
@@ -1518,17 +1557,7 @@ class TabOne(wx.Panel):
                             # print(GenPanel.raw_lamp[file_name].columns)
                     # print(f"File '{avgname}' added spectra list with data: {GenPanel.raw_spec[avgname].A}")
                     GenPanel.list_spec.loc[avgname,'file_name']=avgname
-                    if 'dark' in avgname :
-                        GenPanel.list_spec.loc[avgname,'time_code']=1
-                    elif re.search(r'__\d+__', avgname):
-                        print('THERE WE GO')
-                        GenPanel.list_spec.loc[avgname,'time_code']=int(re.search(r'__\d+__', avgname)[0].replace('_',''))
-                    else :
-                        # GenPanel.list_spec.loc[avgname,'time_code']=int(max(re.findall(r'\d+us', avgname), key = len)[0:-2])#longest_digit_sequence(file_name)
-                        try:
-                            GenPanel.list_spec.loc[avgname,'time_code'] = int(max(re.findall(r'\d+us', avgname), key=len)[0:-2])
-                        except (ValueError, IndexError):
-                            GenPanel.list_spec.loc[avgname,'time_code'] = 0
+                    GenPanel.list_spec.loc[avgname,'time_code']=extract_time_code(avgname)
                     GenPanel.list_spec.loc[avgname,'Abs']=GenPanel.raw_spec[avgname].loc[min(GenPanel.raw_spec[avgname]['wl'], key=lambda x: abs(x - 280)),'A']
                     GenPanel.list_spec.loc[avgname,'laser_dent_blue']=np.nan
                     GenPanel.list_spec.loc[avgname, 'laser_dent_red']=np.nan
@@ -1587,17 +1616,7 @@ class TabOne(wx.Panel):
                             GenPanel.raw_spec[file_name]=Absorbance(GenPanel.raw_lamp[file_name].copy())
                             # print(f"File '{file_name}' added spectra list with data: {GenPanel.raw_spec[file_name].A}")
                             GenPanel.list_spec.loc[file_name,'file_name']=file_name
-                            if 'dark' in file_name :
-                                GenPanel.list_spec.loc[file_name,'time_code']=1
-                            elif re.search(r'__\d+__', file_name):
-                                print('THERE WE GO')
-                                GenPanel.list_spec.loc[file_name,'time_code']=int(re.search(r'__\d+__', file_name)[0].replace('_',''))
-                            else :
-                                # GenPanel.list_spec.loc[file_name,'time_code']=int(max(re.findall(r'\d+us', file_name), key = len)[0:-2])#longest_digit_sequence(file_name)
-                                try:
-                                    GenPanel.list_spec.loc[file_name,'time_code'] = int(max(re.findall(r'\d+us', file_name), key=len)[0:-2])
-                                except (ValueError, IndexError):
-                                    GenPanel.list_spec.loc[file_name,'time_code'] = 0
+                            GenPanel.list_spec.loc[file_name,'time_code']=extract_time_code(file_name)
                             GenPanel.list_spec.loc[file_name,'Abs']=GenPanel.raw_spec[file_name].loc[min(GenPanel.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
                             GenPanel.list_spec.loc[file_name,'laser_dent_blue']=np.nan
                             GenPanel.list_spec.loc[file_name, 'laser_dent_red']=np.nan
@@ -1663,27 +1682,7 @@ class TabOne(wx.Panel):
                     GenPanel.raw_spec[name_correct]=tmp
                     print(GenPanel.raw_spec[name_correct])
                     GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
-                    if 'dark' in name_correct :
-                        GenPanel.list_spec.loc[name_correct,'time_code']=1
-                    elif re.search(r'__\d+__', name_correct):
-                        print('THERE WE GO')
-                        GenPanel.list_spec.loc[name_correct,'time_code']=int(re.search(r'__\d+__', name_correct)[0].replace('_',''))
-                    else :
-                        try :
-                            GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+us', name_correct), key = len)[0:-2])
-                        except ValueError :
-                            try : 
-                                GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'pH\d+', name_correct), key = len)[2:])
-                            except ValueError :
-                                try : 
-                                    GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'__\d+__', name_correct), key = len)[2:-2])
-                                except :
-                                    try : 
-                                        GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+', name_correct), key = len))
-                                    except :
-                                        GenPanel.list_spec.loc[name_correct,'time_code']=0
-                        
-                            # print(int(max(re.findall(r'pH\d+', name_correct), key = len)[2:]))
+                    GenPanel.list_spec.loc[name_correct,'time_code']=extract_time_code(name_correct)
                     GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
                     GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
                     GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
@@ -1712,27 +1711,7 @@ class TabOne(wx.Panel):
                              # GenPanel.raw_spec[name_correct].index=GenPanel.raw_spec[name_correct].wl
                              print(GenPanel.raw_spec[name_correct])
                              GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
-                         if 'dark' in name_correct :
-                             GenPanel.list_spec.loc[name_correct,'time_code']=1
-                         elif re.search(r'__\d+__', name_correct):
-                             print('THERE WE GO')
-                             GenPanel.list_spec.loc[name_correct,'time_code']=int(re.search(r'__\d+__', name_correct)[0].replace('_',''))
-                         else :
-                             try :
-                                 GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+us', name_correct), key = len)[0:-2])
-                             except ValueError :
-                                 try : 
-                                     GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'pH\d+', name_correct), key = len)[2:])
-                                 except ValueError :
-                                     try : 
-                                         GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'__\d+__', name_correct), key = len)[2:-2])
-                                     except :
-                                         try : 
-                                             GenPanel.list_spec.loc[name_correct,'time_code']=int(max(re.findall(r'\d+', name_correct), key = len))
-                                         except :
-                                             GenPanel.list_spec.loc[name_correct,'time_code']=0
-                             
-                                 # print(int(max(re.findall(r'pH\d+', name_correct), key = len)[2:]))
+                         GenPanel.list_spec.loc[name_correct,'time_code']=extract_time_code(name_correct)
                          GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
                          GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
                          GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan

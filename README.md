@@ -11,7 +11,11 @@ It consists in three tabs: (a) the main tab, where spectra can be corrected and 
 
 # New features !
 
-You can now plot spectra from blue to red instead of red to blue, by ticking the 'red to blue' checkbox in the Expert Settings tab !
+- Timing or pH can be extracted from file names directly: 
+  - Simply name your files ...pH7.0...txt or ...30ms...txt. 
+  - Spectra coming from TR-icOS can be named with the usual scheme. 
+  - Spectra coming from multirecord files (CAL(AI)2DOSCOPE, DIAMOND or Spring-8 setups) are handled automatically, use the field at the top left corner of the time-resolved tab to input the integration time if the column don't already contain timing informations.
+- You can now plot spectra from blue to red instead of red to blue, by ticking the 'red to blue' checkbox in the Expert Settings tab !
 
 
 # Installation
