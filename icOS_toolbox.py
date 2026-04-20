@@ -1041,310 +1041,296 @@ class RightPanel(GenPanel):
         self.SetSizer(sizer)
         
 #TODO change the plotting option to add a way to change the plot function to plot-many when there are more than 100 curves
-    def plot_data(self,typecorr,scaling_top):
+    # --- small helpers -----------------------------------------------------
+
+    def _get_palette(self):
+        """Return the seaborn palette name based on the user's blue↔red toggle."""
+        if self.GetParent().left_panel.tab3.red_to_blue_checkbox.GetValue():
+            return 'Spectral_r'
+        return 'Spectral'
+
+    def _tab1(self):
+        """Shortcut to TabOne (checkboxes, scaling_top, mass_center, etc.)."""
+        return self.GetParent().left_panel.tab1
+
+    def _tab2(self):
+        """Shortcut to TabTwo (kinetics fields, SVD results)."""
+        return self.GetParent().left_panel.tab2
+
+    @staticmethod
+    def _resolve_scaling_top(df, scaling_top):
+        """
+        If the user entered scaling_top == 0, auto-detect the peak between
+        300-800 nm; otherwise return the requested value unchanged.
+        """
+        if scaling_top != 0:
+            return scaling_top
+        return float(df.A[df.wl.between(300, 800, inclusive='both')].idxmax())
+
+    @staticmethod
+    def _peak_label(df, scaling_top):
+        """
+        Build the "peak max = X.XX" label suffix shown in the legend.
+
+        Formats the wavelength (in nm) of the peak absorbance within a
+        ±20 nm window around scaling_top to 2 decimal places.
+        """
+        windowed = df[df.wl.between(scaling_top - 20, scaling_top + 20)]
+        if windowed.empty:
+            return ' peak max = N/A'
+        return ' peak max = ' + format(windowed.A.idxmax(), '.2f')
+
+    # --- main dispatch -----------------------------------------------------
+
+    def plot_data(self, typecorr, scaling_top):
+        """
+        Central plot dispatcher. Maps ``typecorr`` to a small handler method
+        that knows how to render that view. Unknown typecorr -> no-op.
+        """
         self.plot_panel.clear()
-        
-        if self.GetParent().left_panel.tab3.red_to_blue_checkbox.GetValue() :
-            pal='Spectral_r'
-        else :
-            pal='Spectral'
-            
-        if typecorr == 'raw':
-            self.plot_panel.clear()
-   
-            palette=sns.color_palette(palette=pal, n_colors=len(GenPanel.raw_spec))   
-            n=0   
-            if len(GenPanel.raw_spec) > 30 :
-                list_toplot=[]
-            if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                centroids = self.GetParent().left_panel.tab1.mass_center(typecorr = typecorr)                                        
-            for i in GenPanel.raw_spec : #GenPanel.raw_spec : 
-                if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                    if len(GenPanel.raw_spec) > 30 :
-                        list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
-                            np.array(GenPanel.raw_spec[i].A)))
-                    else : 
-                        self.plot_panel.oplot(np.array(GenPanel.raw_spec[i].wl),                  
-                                              np.array(GenPanel.raw_spec[i].A) ,                   
-                                              linewidth=2,  
-                                              style='line',
-                                              marker=None,markersize=0,                  
-                        
-                        label=i +" mass center = " +format(centroids[i], '.3f'), 
-                        color=rgb_to_hex(palette[n])) 
-                    self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
-                else:
-                                        
-                            if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top != 0 :
-                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(scaling_top-20,scaling_top+20,inclusive='both')].mean()
-                                # print(palette[n], rgb_to_hex(palette[n]))
-                                if len(GenPanel.raw_spec) > 30 :
-                                    list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
-                                        np.array(tmp)))
-                                else: 
-                                    self.plot_panel.oplot(np.array(GenPanel.raw_spec[i].wl),                  
-                                        np.array(tmp) ,                   
-                                        linewidth=2,
-                                        style='line',
-                                        marker=None,markersize=0,
-                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-20,scaling_top+20)].A.idxmax(), '.3f'), 
-                                        color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                                # if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
-                                #     for spec in GenPanel.raw_spec:
-                                #         GenPanel.raw_spec[spec].A *=1/GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
-                            elif self.GetParent().left_panel.tab1.scaling_checkbox.GetValue()  and scaling_top == 0 :
-                                tmp_scaling_top = float(GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(300,800,inclusive='both')].idxmax())
-                                # print(tmp_scaling_top)
-                                tmp= GenPanel.raw_spec[i].A / GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(tmp_scaling_top-10,tmp_scaling_top+10,inclusive='both')].mean()
-                                if len(GenPanel.raw_spec) > 30 :
-                                    list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
-                                        np.array(tmp)))
-                                else: 
-                                    self.plot_panel.oplot(np.array(GenPanel.raw_spec[i].wl),                  
-                                        np.array(tmp) , 
-                                        style='line',
-                                        marker=None,markersize=0,                                    
-                                        linewidth=2,
-                                        label=i +" max Abs = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(tmp_scaling_top-10,tmp_scaling_top+10)].A.idxmax(), '.3f'), 
-                                        color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                            else :
-                                if len(GenPanel.raw_spec) > 30 :
-                                    list_toplot.append((np.array(GenPanel.raw_spec[i].wl),                  
-                                        np.array(GenPanel.raw_spec[i].A)))
-                                else:
-                                    self.plot_panel.oplot(np.array(GenPanel.raw_spec[i].wl),                  
-                                        np.array(GenPanel.raw_spec[i].A) ,                   
-                                        linewidth=2,
-                                        style='line',
-                                        marker=None,markersize=0,
-                                        label=i +" peak max = " +format(GenPanel.raw_spec[i][GenPanel.raw_spec[i].wl.between(scaling_top-20,scaling_top+20)].A.idxmax(), '.3f'), 
-                                        color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]')   
-                n=n+1
-            if len(GenPanel.raw_spec) > 30 :
-                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal)
-  
-        elif typecorr == 'const':
-            self.plot_panel.clear()
-            palette=sns.color_palette(palette=pal, n_colors=len(GenPanel.const_spec))
-            print('plotting constant corrected data')
-            list_toplot=[]
-            n=0
-            if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                centroids = self.GetParent().left_panel.tab1.mass_center(typecorr = typecorr)  
-            for i in GenPanel.list_spec.file_name : 
-                if len(GenPanel.const_spec) > 30 :
-                    list_toplot.append((np.array(GenPanel.const_spec[i].wl),
-                                          np.array(GenPanel.const_spec[i].A)))
-                else:
-                    if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                            self.plot_panel.oplot(np.array(GenPanel.const_spec[i].wl),
-                                                      np.array(GenPanel.const_spec[i].A) ,
-                                                      linewidth=2,
-                                                      style='line',
-                                                      marker=None,markersize=0,
-                                                      label=i+" mass center = " +format(centroids[i], '.3f'), 
-                                                      color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                            self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
-                    else :
-                        if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() and scaling_top != 0 :
-                            self.plot_panel.oplot(np.array(GenPanel.const_spec[i].wl),
-                                                          np.array(GenPanel.const_spec[i].A) ,
-                                                          linewidth=2,
-                                                          style='line',
-                                                          marker=None,markersize=0,
-                                                          label=i+"Max Abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-20,scaling_top+20)].A.idxmax(), '.2f'), 
-                                                          color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                        else :
-                            self.plot_panel.oplot(np.array(GenPanel.const_spec[i].wl),
-                                                          np.array(GenPanel.const_spec[i].A) ,
-                                                          linewidth=2,
-                                                          style='line',
-                                                          marker=None,markersize=0,
-                                                          label=i+"Max Abs peak ="+format(GenPanel.const_spec[i][GenPanel.const_spec[i].wl.between(scaling_top-20,scaling_top+20)].A.idxmax(), '.2f'),
-                                                          color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                            
-                n=n+1
-            if len(GenPanel.const_spec) > 30 :
-                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal)
-     
-        
-        elif typecorr == 'ready':
-            self.plot_panel.clear()
 
-            print('plotting scattering corrected spectra')
-            
-            palette=sns.color_palette(palette=pal, n_colors=len(GenPanel.ready_spec))   
-            n=0  
-            list_toplot=[]
-            
-            if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                centroids = self.GetParent().left_panel.tab1.mass_center(typecorr = typecorr)                                            
-            for i in GenPanel.list_spec.file_name : #GenPanel.ready_spec :
-                if len(GenPanel.ready_spec) > 30:
-                    list_toplot.append((np.array(GenPanel.ready_spec[i].wl), np.array(GenPanel.ready_spec[i].A)))
-                else:
-                    if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                        self.plot_panel.oplot(np.array(GenPanel.ready_spec[i].wl),                  
-                              np.array(GenPanel.ready_spec[i].A) ,                   
-                              linewidth=2,
-                              style='line',
-                              marker=None,markersize=0,
-                              label=i +" mass center = " +format(centroids[i], '.3f'), 
-                              color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                        self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.') #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
-                    else :
-                        if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() and scaling_top != 0 :
-                            self.plot_panel.oplot(np.array(GenPanel.ready_spec[i].wl),                  
-                                    np.array(GenPanel.ready_spec[i].A) ,                   
-                                    linewidth=2,
-                                    style='line',
-                                    marker=None,markersize=0,
-                                    label=i +" mass center = " +format(GenPanel.ready_spec[i][GenPanel.ready_spec[i].wl.between(scaling_top-20,scaling_top+20)].A.idxmax(), '.2f'), 
-                                    color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                        else :
-                            self.plot_panel.oplot(np.array(GenPanel.ready_spec[i].wl),                  
-                                    np.array(GenPanel.ready_spec[i].A) ,                   
-                                    linewidth=2,
-                                    style='line',
-                                    marker=None,markersize=0,
-                                    label=i +" mass center = " +format(GenPanel.ready_spec[i].A.idxmax(), '.2f'), 
-                                    color=rgb_to_hex(palette[n]) ,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]') 
-                n=n+1
-            if len(GenPanel.ready_spec) > 30:
-                self.plot_panel.plot_many_modified(datalist=list_toplot,ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal)
-        elif typecorr == 'diff':            
-            self.plot_panel.clear()
+        handlers = {
+            'raw':          lambda: self._plot_spec_series(GenPanel.raw_spec, scaling_top, apply_display_scaling=True),
+            'const':        lambda: self._plot_spec_series(GenPanel.const_spec, scaling_top, apply_display_scaling=False),
+            'ready':        lambda: self._plot_spec_series(GenPanel.ready_spec, scaling_top, apply_display_scaling=False),
+            'diff':         self._plot_diff,
+            'diffserie':    self._plot_diffserie,
+            'time-trace':   self._plot_time_trace,
+            'kinetic_fit':  self._plot_kinetic_fit,
+            'SVD':          self._plot_SVD,
+            'quality_plot': self._plot_quality,
+            '2D_plot':      lambda: None,  # original was a no-op too
+        }
+        handler = handlers.get(typecorr)
+        if handler is None:
+            print(f"plot_data: unknown typecorr '{typecorr}'")
+            return
+        handler()
 
-            n=0
-            if self.GetParent().left_panel.tab1.mass_center_checkbox.GetValue() :
-                self.plot_panel.oplot(np.array(GenPanel.diffspec.wl),                  
-                      np.array(GenPanel.diffspec.A) ,                   
-                      linewidth=2, 
-                      style='line',
-                      marker=None,markersize=0,
-                      ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
-                      title = 'Difference spectrum') 
-            #     self.plot_panel.axvline(centroids[i], color = palette[n], ls = '-.')
-            else :
-#                if self.GetParent().left_panel.tab1.scaling_checkbox.GetValue() :
-                self.plot_panel.oplot(np.array(GenPanel.diffspec.wl),                  
-                        np.array(GenPanel.diffspec.A) ,                   
-                        linewidth=2, 
-                        ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
-                        title = 'Difference spectrum') 
-                    
-            n=n+1
-        elif typecorr == '2D_plot':
-            self.plot_panel.clear()
-            
-        elif typecorr == 'time-trace':
-            self.plot_panel.clear()
-            wavelength = str(self.GetParent().left_panel.tab2.field_timetrace.GetValue())
-            print('trying to print the time-trace at ' + wavelength + 'nm')
-           
-            n=0                          #this is just a counter for the palette, it's ugly as hell but hey, it works 
-            # for i in GenPanel.list_spec.index:
-            startfit=float(self.GetParent().left_panel.tab2.field_kinetic_start.GetValue())
-            dose=float(self.GetParent().left_panel.tab2.abcisse_field.GetValue())
-            self.plot_panel.oplot(     (np.array(GenPanel.list_spec.time_code) -startfit) * dose, #TODO fix that             , 
-                    np.array(GenPanel.list_spec.Abs) ,
-                    marker='o', markersize=4, color = 'blue', linewidth=0,
-                    ylabel='Absorbance [AU]', xlabel='Time [s]', 
-                    title = 'Absorbance at ' + wavelength + ' over time') 
-            for i in GenPanel.list_spec.index :
-                print(GenPanel.list_spec.loc[i, 'time_code'], GenPanel.list_spec.loc[i, 'Abs'])
+    # --- handlers: raw / const / ready (consolidated) ----------------------
 
-        elif typecorr == 'kinetic_fit':
-            self.plot_panel.clear()
-            wavelength = str(self.GetParent().left_panel.tab2.field_timetrace.GetValue())
-            print('trying to print the time-trace at ' + wavelength + 'nm')
+    def _plot_spec_series(self, spec_dict, scaling_top, apply_display_scaling):
+        """
+        Plot a dict of spectra (raw / const / ready) with the user's current
+        options applied: mass-center overlay, blue↔red palette direction, and
+        batch-mode when >30 spectra.
 
-            n=0                          #this is just a counter for the palette, it's ugly as hell but hey, it works 
-            startfit=float(self.GetParent().left_panel.tab2.field_kinetic_start.GetValue())
-            dose=float(self.GetParent().left_panel.tab2.abcisse_field.GetValue())
-            self.plot_panel.oplot((np.array(GenPanel.list_spec.time_code) -startfit) * dose,
-                                  np.array(GenPanel.list_spec.Abs) ,
-                                  color = 'blue',
-                                  marker='o', markersize=4, linewidth=0, alpha=0.5,
-                                  style=None,
-                                  ylabel='Absorbance [AU]', xlabel='Time [s]', 
-                                  label= 'abs at ' + wavelength, legend_on=True) 
-                  
-            # print(GenPanel.list_spec.time_code, GenPanel.list_spec.Abs)
-            print(self.GetParent().left_panel.tab2.model.x,self.GetParent().left_panel.tab2.model.y)
-            self.plot_panel.oplot(np.array(self.GetParent().left_panel.tab2.model.x),
-                    np.array(self.GetParent().left_panel.tab2.model.y),
-                    linewidth=4, 
-                    alpha = 0.5,
-                    style='line',
-                    marker=None,markersize=0,
-                    label="modelled kinetic with tau="+format(self.GetParent().left_panel.tab2.para_kin_fit[-1], '.3f'),    
-                    ylabel='Absorbance [AU]', xlabel='Time [s]', 
-                    title = 'Absorbance at ' + wavelength + 'nm over time after laser pulse',
-                    color='red', legend_on=True)
- 
-        elif typecorr == 'SVD' :
-            self.plot_panel.clear()
-            laser_blue=GenPanel.list_spec.laser_dent_blue.min()
-            laser_red=GenPanel.list_spec.laser_dent_red.max()
-            tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)]]
-            palette=sns.color_palette(palette=pal, n_colors=min(5,len(GenPanel.raw_spec)))
-             
-            list_toplot=[]
-            for i in range(0,min(5,len(GenPanel.raw_spec)-1)):
-                if len(GenPanel.raw_spec) > 30:
-                    list_toplot.append((np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep]),
-                                        np.array(self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i])))
-                # tmp['SVn'+str(i)]=self.scaled_time_factors[i]
-                self.plot_panel.oplot(np.array(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep]),
-                        np.array(self.GetParent().left_panel.tab2.scaled_spec_lSV[:,i]), 
-                        linewidth=2,  
-                        style='line',
-                        marker=None,markersize=0,                  
-                        label='SV n° ' + str(i) ,
-                        title = 'left Singular Vectors',
-                        xlabel = 'Wavelength [nm]', 
-                        ylabel = 'Absorbance [AU]',
-                        color=rgb_to_hex(palette[i]))      
-            if len(GenPanel.raw_spec)> 30 :
-                self.plot_panel.plot_many_modified(datalist=list_toplot, title = 'left Singular Vectors',
-                                                   xlabel = 'Wavelength [nm]', 
-                                                   ylabel = 'Absorbance [AU]', palin=pal)
-        elif typecorr == 'diffserie' :
-            palette=sns.color_palette(palette=pal, n_colors=len(GenPanel.raw_spec))
-            self.plot_panel.clear()
-            i=0
-            list_toplot=[]
-            for spec in GenPanel.diffserie : 
-                if len(GenPanel.diffserie) > 30 : 
-                    list_toplot.append((np.array(GenPanel.diffserie[spec].wl),np.array(GenPanel.diffserie[spec].A)))
-                else:    
-                    self.plot_panel.oplot(np.array(GenPanel.diffserie[spec].wl), 
-                                          np.array(GenPanel.diffserie[spec].A),
-                                          linewidth=2,   
-                                          style='line',
-                                          marker=None,markersize=0,                 
-                                          label=spec + '- dark',
-                                          title = 'Difference spectra series',
-                                          xlabel = 'Wavelength [nm]', 
-                                          ylabel = 'Absorbance [AU]',
-                                          color=rgb_to_hex(palette[i+1])) 
-                
-                i+=1
-            if len(GenPanel.diffserie) > 30 :
-                self.plot_panel.plot_many_modified(datalist=list_toplot, 
-                                                   title = 'Difference spectra series',
-                                                   xlabel = 'Wavelength [nm]', 
-                                                   ylabel = 'Absorbance [AU]', palin=pal)
-        elif typecorr == 'quality_plot': #TODO introduce a fix for this plot by creating a custom plotting function with a color list as one of the intakes
-            self.plot_panel.clear()
-            chosen_spectrum = self.GetParent().left_panel.tab3.selection
-            print('plotting quality')  
-            list_toplot=[]
-            for i in GenPanel.raw_lamp[chosen_spectrum].index:
-                list_toplot.append((np.array([GenPanel.raw_spec[chosen_spectrum].wl[i]]),                  
-                                    np.array([GenPanel.raw_spec[chosen_spectrum].A[i]])))
-            self.plot_panel.plot_quality(datalist=list_toplot,I0=np.array(GenPanel.raw_lamp[chosen_spectrum].I0))
+        ``apply_display_scaling`` is True only for the 'raw' stage, because
+        'const' and 'ready' spectra are normalized in-place at correction
+        time (see ``on_constant_corr`` and ``on_scat_corr``). Applying it
+        again at plot time would double-normalize them.
+
+        Iteration order follows ``GenPanel.list_spec.file_name`` (time-sorted)
+        for a consistent color-to-time mapping across all three stages.
+        """
+        if not spec_dict:
+            return
+        pal = self._get_palette()
+        palette = sns.color_palette(palette=pal, n_colors=len(spec_dict))
+
+        tab1 = self._tab1()
+        use_mass_center = tab1.mass_center_checkbox.GetValue()
+        use_scaling = tab1.scaling_checkbox.GetValue()
+        centroids = tab1.mass_center(typecorr=self._typecorr_from_dict(spec_dict)) if use_mass_center else {}
+        batch = len(spec_dict) > 30
+        list_toplot = []
+
+        # Always iterate by time-sorted order; fall back to dict order if
+        # list_spec is empty (e.g. during startup).
+        names = list(GenPanel.list_spec.file_name) if len(GenPanel.list_spec) else list(spec_dict)
+
+        for n, name in enumerate(names):
+            if name not in spec_dict:
+                continue
+            df = spec_dict[name]
+
+            if use_scaling and apply_display_scaling:
+                sc_top = self._resolve_scaling_top(df, scaling_top)
+                norm_window = df.A[df.wl.between(sc_top - 20, sc_top + 20, inclusive='both')]
+                norm = norm_window.mean() if not norm_window.empty else 1.0
+                y_values = df.A / norm if norm else df.A
+                label_suffix = self._peak_label(df, sc_top)
+            else:
+                sc_top = scaling_top if scaling_top != 0 else 280
+                y_values = df.A
+                label_suffix = self._peak_label(df, sc_top)
+
+            if use_mass_center and name in centroids:
+                label_suffix = ' mass center = ' + format(centroids[name], '.3f')
+
+            if batch:
+                list_toplot.append((np.array(df.wl), np.array(y_values)))
+            else:
+                self.plot_panel.oplot(
+                    np.array(df.wl), np.array(y_values),
+                    linewidth=2, style='line', marker=None, markersize=0,
+                    label=name + label_suffix,
+                    color=rgb_to_hex(palette[n]),
+                    ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
+                )
+            # Mass-center vline: original code draws this whether or not we
+            # are in batch mode (though axvline on plot_many_modified panels
+            # does not currently work -- see TODO in oplot branch).
+            if use_mass_center and name in centroids:
+                #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
+                self.plot_panel.axvline(centroids[name], color=palette[n], ls='-.')
+
+        if batch:
+            self.plot_panel.plot_many_modified(
+                datalist=list_toplot,
+                ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal,
+            )
+
+    @staticmethod
+    def _typecorr_from_dict(spec_dict):
+        """Reverse-lookup of the typecorr label for a given spec_dict. Used
+        to pass the right typecorr to ``mass_center``."""
+        if spec_dict is GenPanel.raw_spec:
+            return 'raw'
+        if spec_dict is GenPanel.const_spec:
+            return 'const'
+        if spec_dict is GenPanel.ready_spec:
+            return 'ready'
+        return None
+
+    # --- handlers: diff / diffserie ----------------------------------------
+
+    def _plot_diff(self):
+        """Single difference spectrum (computed on TabOne)."""
+        self.plot_panel.oplot(
+            np.array(GenPanel.diffspec.wl),
+            np.array(GenPanel.diffspec.A),
+            linewidth=2, style='line', marker=None, markersize=0,
+            ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
+            title='Difference spectrum',
+        )
+
+    def _plot_diffserie(self):
+        """Series of diff spectra (one per spec vs. reference)."""
+        if not GenPanel.diffserie:
+            return
+        pal = self._get_palette()
+        palette = sns.color_palette(palette=pal, n_colors=len(GenPanel.raw_spec))
+        batch = len(GenPanel.diffserie) > 30
+        list_toplot = []
+        for i, spec in enumerate(GenPanel.diffserie):
+            df = GenPanel.diffserie[spec]
+            if batch:
+                list_toplot.append((np.array(df.wl), np.array(df.A)))
+            else:
+                self.plot_panel.oplot(
+                    np.array(df.wl), np.array(df.A),
+                    linewidth=2, style='line', marker=None, markersize=0,
+                    label=spec + '- dark',
+                    title='Difference spectra series',
+                    xlabel='Wavelength [nm]', ylabel='Absorbance [AU]',
+                    color=rgb_to_hex(palette[i + 1]),
+                )
+        if batch:
+            self.plot_panel.plot_many_modified(
+                datalist=list_toplot,
+                title='Difference spectra series',
+                xlabel='Wavelength [nm]', ylabel='Absorbance [AU]', palin=pal,
+            )
+
+    # --- handlers: kinetics ------------------------------------------------
+
+    def _plot_time_trace(self):
+        """Absorbance at the user-chosen wavelength vs. time (dose units)."""
+        tab2 = self._tab2()
+        wavelength = str(tab2.field_timetrace.GetValue())
+        print('trying to print the time-trace at ' + wavelength + 'nm')
+        startfit = float(tab2.field_kinetic_start.GetValue())
+        dose = float(tab2.abcisse_field.GetValue())
+        self.plot_panel.oplot(
+            (np.array(GenPanel.list_spec.time_code) - startfit) * dose,
+            np.array(GenPanel.list_spec.Abs),
+            marker='o', markersize=4, color='blue', linewidth=0,
+            ylabel='Absorbance [AU]', xlabel='Time [s]',
+            title='Absorbance at ' + wavelength + ' over time',
+        )
+
+    def _plot_kinetic_fit(self):
+        """Time-trace plus fitted kinetic model overlay."""
+        tab2 = self._tab2()
+        wavelength = str(tab2.field_timetrace.GetValue())
+        print('trying to print the kinetic fit at ' + wavelength + 'nm')
+        startfit = float(tab2.field_kinetic_start.GetValue())
+        dose = float(tab2.abcisse_field.GetValue())
+        self.plot_panel.oplot(
+            (np.array(GenPanel.list_spec.time_code) - startfit) * dose,
+            np.array(GenPanel.list_spec.Abs),
+            color='blue',
+            marker='o', markersize=4, linewidth=0, alpha=0.5, style=None,
+            ylabel='Absorbance [AU]', xlabel='Time [s]',
+            label='abs at ' + wavelength, legend_on=True,
+        )
+        self.plot_panel.oplot(
+            np.array(tab2.model.x), np.array(tab2.model.y),
+            linewidth=4, alpha=0.5, style='line', marker=None, markersize=0,
+            label='modelled kinetic with tau=' + format(tab2.para_kin_fit[-1], '.3f'),
+            ylabel='Absorbance [AU]', xlabel='Time [s]',
+            title='Absorbance at ' + wavelength + 'nm over time after laser pulse',
+            color='red', legend_on=True,
+        )
+
+    # --- handlers: SVD / quality -------------------------------------------
+
+    def _plot_SVD(self):
+        """Left singular vectors (spectral dimension) overlaid on one panel."""
+        pal = self._get_palette()
+        laser_blue = GenPanel.list_spec.laser_dent_blue.min()
+        laser_red = GenPanel.list_spec.laser_dent_red.max()
+        ref_df = GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]]
+        mask = ref_df.wl.between(300, 800)
+        tokeep = [
+            np.isnan(laser_blue) or np.isnan(laser_red) or x < laser_blue or x > laser_red
+            for x in ref_df.wl[mask]
+        ]
+        n_plot = min(5, len(GenPanel.raw_spec))
+        palette = sns.color_palette(palette=pal, n_colors=n_plot)
+        batch = len(GenPanel.raw_spec) > 30
+        list_toplot = []
+        scaled = self._tab2().scaled_spec_lSV
+        wl_axis = np.array(ref_df.wl[mask][tokeep])
+
+        for i in range(min(5, len(GenPanel.raw_spec) - 1)):
+            y = np.array(scaled[:, i])
+            if batch:
+                list_toplot.append((wl_axis, y))
+            self.plot_panel.oplot(
+                wl_axis, y,
+                linewidth=2, style='line', marker=None, markersize=0,
+                label='SV n° ' + str(i),
+                title='left Singular Vectors',
+                xlabel='Wavelength [nm]', ylabel='Absorbance [AU]',
+                color=rgb_to_hex(palette[i]),
+            )
+        if batch:
+            self.plot_panel.plot_many_modified(
+                datalist=list_toplot, title='left Singular Vectors',
+                xlabel='Wavelength [nm]', ylabel='Absorbance [AU]', palin=pal,
+            )
+
+    def _plot_quality(self):
+        """
+        Per-pixel quality plot for a single chosen spectrum, coloured by
+        lamp intensity I0.
+        """
+        #TODO introduce a fix for this plot by creating a custom plotting
+        # function with a color list as one of the intakes
+        chosen = self.GetParent().left_panel.tab3.selection
+        print('plotting quality')
+        list_toplot = []
+        for i in GenPanel.raw_lamp[chosen].index:
+            list_toplot.append((
+                np.array([GenPanel.raw_spec[chosen].wl[i]]),
+                np.array([GenPanel.raw_spec[chosen].A[i]]),
+            ))
+        self.plot_panel.plot_quality(
+            datalist=list_toplot,
+            I0=np.array(GenPanel.raw_lamp[chosen].I0),
+        )
 
 
 
