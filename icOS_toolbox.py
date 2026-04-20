@@ -760,6 +760,115 @@ def multiscan_opener(file_path):
                 timestamps=dict([(str(i),float(re.sub(',','.',max(re.findall(r'[\d,.]+', i), key=len)))) for i in list(raw_abs.columns)[1:]])
                 return raw_spec, timestamps
 
+def _get_spec_dict(typecorr):
+    """
+    Return the spectra dict corresponding to a processing stage.
+
+    ``typecorr`` takes one of ``'raw'``, ``'const'``, ``'ready'``. Any other
+    value returns ``None``, so callers can bail cleanly on an unknown stage
+    instead of falling off the end of an if/elif chain.
+    """
+    return {
+        'raw': GenPanel.raw_spec,
+        'const': GenPanel.const_spec,
+        'ready': GenPanel.ready_spec,
+    }.get(typecorr)
+
+
+def _split_save_path(totalpath):
+    """
+    Split a user-picked file path into (directory-with-trailing-sep, basename).
+
+    Windows uses ``\\`` separators, other platforms use ``/``. The directory
+    portion is returned with a trailing separator so callers can concatenate
+    a filename directly (e.g. ``file_path + "raw_" + file_name + ".csv"``).
+    """
+    dirsep = '\\' if platform.system() == 'Windows' else '/'
+    parts = totalpath.split(dirsep)
+    file_dir = dirsep.join(parts[:-1]) + dirsep if len(parts) > 1 else ''
+    file_name = parts[-1]
+    return file_dir, file_name
+
+
+def _write_spec_dict_to_csv(spec_dict, out_path, label):
+    """
+    Serialize a spectra dict ({name: DataFrame}) into a single CSV with one
+    column per spectrum, keyed on wavelength. Template is the first spectrum
+    stripped of its own 'wl'/'A' columns so that the index (wavelength) and
+    any extra metadata columns (if present) are preserved.
+    """
+    if not spec_dict:
+        return
+    first_key = next(iter(spec_dict))
+    towrite = spec_dict[first_key].drop(columns=['wl', 'A'])
+    for spec_name, df in spec_dict.items():
+        towrite[spec_name] = df.A
+        print(f"File '{spec_name}' saved in {label} column")
+    towrite.to_csv(out_path, index=True)
+    print(f"wrote {out_path}")
+
+
+def _save_all_spectra(totalpath):
+    """
+    Shared save routine for both TabOne and TabTwo. Writes raw, const (if
+    complete), and ready (if complete) spectra to CSVs in the chosen
+    directory, prefixed with ``raw_``, ``constant_``, ``ready_``.
+
+    Returns (file_dir, file_name) for the caller to use for additional
+    companion outputs (diff spectra, SVD results, etc.).
+    """
+    file_dir, file_name = _split_save_path(totalpath)
+    print(file_dir)
+
+    _write_spec_dict_to_csv(
+        GenPanel.raw_spec,
+        file_dir + 'raw_' + file_name + '.csv',
+        label='raw',
+    )
+
+    # Only write const / ready if the counts match raw (i.e. every spectrum
+    # has been through that stage); otherwise the CSV would be a mix of old
+    # and new and that's not what the user expects.
+    if len(GenPanel.const_spec) == len(GenPanel.raw_spec):
+        _write_spec_dict_to_csv(
+            GenPanel.const_spec,
+            file_dir + 'constant_' + file_name + '.csv',
+            label='constant',
+        )
+    if len(GenPanel.ready_spec) == len(GenPanel.raw_spec):
+        _write_spec_dict_to_csv(
+            GenPanel.ready_spec,
+            file_dir + 'ready_' + file_name + '.csv',
+            label='ready',
+        )
+
+    return file_dir, file_name
+
+
+def _refresh_right_panel(panel, typecorr):
+    """
+    Re-plot the right panel with the caller-supplied ``typecorr`` and the
+    current value of TabOne's ``field_topeak`` (defaulting to 280 if empty).
+
+    ``panel`` can be any tab panel — the helper walks up to the notebook to
+    reach TabOne, and up to the main frame to reach the right panel.
+
+    ``typecorr`` values include the processing stages ('raw', 'const',
+    'ready') and view-only plot modes ('time-trace', 'SVD', 'diff',
+    'diffserie', 'kinetic_fit', 'quality_plot', '2D_plot').
+    """
+    # Notebook is two steps up from a tab (Tab -> Notebook -> LeftPanel).
+    # From the notebook parent (LeftPanel) we can reach tab1 directly.
+    notebook_parent = panel.GetParent().GetParent()
+    tab1 = notebook_parent.tab1
+    raw = tab1.field_topeak.GetValue()
+    scaling_top = float(raw) if len(raw) > 0 else 280
+
+    # Up one more to the splitter, which owns right_panel.
+    splitter = notebook_parent.GetParent()
+    splitter.right_panel.plot_data(typecorr, scaling_top)
+
+
 class GenPanel(wx.Panel):
     raw_lamp={}
     raw_spec = {}
@@ -1904,11 +2013,7 @@ class TabOne(wx.Panel):
         Parametrized over `typecorr` to avoid duplicating the algorithm
         across raw / const / ready spectra dicts.
         """
-        spec_dict = {
-            'raw': GenPanel.raw_spec,
-            'const': GenPanel.const_spec,
-            'ready': GenPanel.ready_spec,
-        }.get(typecorr)
+        spec_dict = _get_spec_dict(typecorr)
         if spec_dict is None:
             return {}
 
@@ -1993,21 +2098,14 @@ class TabOne(wx.Panel):
             
             print(self.typecorr)
             #add if statements to handle the diff spectra for all 
-        if self.typecorr == 'raw':
-            GenPanel.diffspec.wl = GenPanel.raw_spec[self.sorted_selections[0]].wl
+        spec_dict = _get_spec_dict(self.typecorr)
+        if spec_dict is not None:
+            GenPanel.diffspec.wl = spec_dict[self.sorted_selections[0]].wl
             GenPanel.diffspec.index = GenPanel.diffspec.wl
-            GenPanel.diffspec.A = GenPanel.raw_spec[self.sorted_selections[0]].A-GenPanel.raw_spec[self.sorted_selections[1]].A
-            # print(GenPanel.diffspec[350:700])
-        elif self.typecorr == 'const':
-            GenPanel.diffspec.wl = GenPanel.const_spec[self.sorted_selections[0]].wl
-            GenPanel.diffspec.index = GenPanel.diffspec.wl
-            GenPanel.diffspec.A = GenPanel.const_spec[self.sorted_selections[0]].A-GenPanel.const_spec[self.sorted_selections[1]].A
-            # print(GenPanel.diffspec[350:700])
-        elif self.typecorr == 'ready':
-            GenPanel.diffspec.wl = GenPanel.ready_spec[self.sorted_selections[0]].wl
-            GenPanel.diffspec.index = GenPanel.diffspec.wl
-            GenPanel.diffspec.A = GenPanel.ready_spec[self.sorted_selections[0]].A-GenPanel.ready_spec[self.sorted_selections[1]].A
-            # print(GenPanel.diffspec[350:700])
+            GenPanel.diffspec.A = (
+                spec_dict[self.sorted_selections[0]].A
+                - spec_dict[self.sorted_selections[1]].A
+            )
         self.update_right_panel('diff')
     
     def on_drop_spec(self, event): #htis should open a Filechooser dialog and remove the 
@@ -2038,70 +2136,34 @@ class TabOne(wx.Panel):
         
     def on_save(self, event):
         wildcard = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
-        dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-        if dialog.ShowModal() == wx.ID_OK:
-            totalpath = dialog.GetPath()
-            # file_path2 = file_path.split('/')[:-1]
-            if platform.system() == 'Windows' :
-                dirsep='\\'
-            else:# or platform.system() == 'MacOS'
-                dirsep='/'
-            file_path=''
-            for i in totalpath.split(dirsep)[:-1]:
-                file_path+=i+dirsep
-            print(file_path)
-            file_name = totalpath.split(dirsep)[-1]
-                
+        dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard,
+                               style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+        if dialog.ShowModal() != wx.ID_OK:
+            dialog.Destroy()
+            return
+        totalpath = dialog.GetPath()
         dialog.Destroy()
-        towrite_raw_spectra=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].drop(columns=['wl','A'])
-        for spec in GenPanel.raw_spec:
-            towrite_raw_spectra[spec]=GenPanel.raw_spec[spec].A
-            print("File" + file_path + f" '{spec}' saved in: raw_{file_name}.csv in column {spec}")
-        towrite_raw_spectra.to_csv(file_path + 'raw_' +  file_name + ".csv", index=True)
-        if len(GenPanel.const_spec)==len(GenPanel.raw_spec):
-            towrite_constant_spectra=GenPanel.const_spec[next(iter(GenPanel.const_spec))].drop(columns=['wl','A'])
-            for spec in GenPanel.const_spec:
-                towrite_constant_spectra[spec]=GenPanel.const_spec[spec].A
-                print("File" + file_path + f" '{spec}' saved in: constant_{file_name}.csv in column {spec}")
-            towrite_constant_spectra.to_csv(file_path + 'constant_' +  file_name + ".csv", index=True)
-        if len(GenPanel.ready_spec)==len(GenPanel.raw_spec):
-            towrite_ready_spectra=GenPanel.ready_spec[next(iter(GenPanel.ready_spec))].drop(columns=['wl','A'])
-            for spec in GenPanel.ready_spec:
-                towrite_ready_spectra[spec]=GenPanel.ready_spec[spec].A
-                print("File" + file_path + f" '{spec}' saved in: ready_{file_name}.csv in column {spec}")
-            towrite_ready_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
-        # wavelength = str(self.field_timetrace.GetValue())
-        # GenPanel.list_spec.to_csv(file_path + 'time-trace_' + wavelength + '_nm.csv', index=True)
-        
-        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
-        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
-        # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
-        print("Figure saved at: " + file_path + file_name + '.png')
-        
-        
-        
-        if hasattr(GenPanel, 'diffspec') : #check if a difference spectrum exists 
-            GenPanel.diffspec.to_csv( 'diff_' +  GenPanel.diff_selections[0] +'-' + GenPanel.diff_selections[1] + ".csv")
-            print('difference spectrum saved to:' + 'diff_' +  GenPanel.diff_selections[0] +'-' + GenPanel.diff_selections[1] + ".csv")
-        
+
+        file_dir, file_name = _save_all_spectra(totalpath)
+        print("Figure saved at: " + file_dir + file_name + '.png')
+
+        # Diff spectrum (if one has been computed). GenPanel.diffspec always
+        # exists as a class attribute (initialized as an empty DataFrame) so
+        # checking hasattr isn't sufficient — fall through cleanly if there
+        # are no diff_selections set.
+        if hasattr(GenPanel, 'diff_selections'):
+            diffpath = ('diff_' + GenPanel.diff_selections[0]
+                        + '-' + GenPanel.diff_selections[1] + '.csv')
+            GenPanel.diffspec.to_csv(diffpath)
+            print('difference spectrum saved to: ' + diffpath)
+
     def update_right_panel(self, typecorr):
-        if len(self.field_topeak.GetValue()) == 0:
-            scaling_top=280
-        else :
-            scaling_top = float(self.field_topeak.GetValue())
-        print(scaling_top)
-        self.GetParent().GetParent().GetParent().right_panel.plot_data(typecorr, scaling_top)
+        _refresh_right_panel(self, typecorr)
         
         
     def backtoraw(self, event):
-        self.typecorr='raw'
-        if len(self.field_topeak.GetValue()) == 0:
-            scaling_top=280
-        else :
-            scaling_top = float(self.field_topeak.GetValue())
-        print(scaling_top)
-        
-        self.GetParent().GetParent().GetParent().right_panel.plot_data('raw', scaling_top)
+        self.typecorr = 'raw'
+        _refresh_right_panel(self, 'raw')
 
 class FileChooser(wx.Dialog):
     def __init__(self, parent, title, numtodrop, files):
@@ -2324,15 +2386,13 @@ class TabTwo(wx.Panel):
         #     print('Linear scale has been chosen')
         wavelength = float(self.field_timetrace.GetValue())
         print(wavelength)
-        if self.GetParent().GetParent().tab1.typecorr == 'raw' :
-            for i in GenPanel.list_spec.index :
-                GenPanel.list_spec.loc[i, 'Abs'] =  GenPanel.raw_spec[i].loc[min(GenPanel.raw_spec[i]['wl'], key=lambda x: abs(x - wavelength)),'A']
-        if self.GetParent().GetParent().tab1.typecorr == 'const' :
-            for i in GenPanel.list_spec.index :
-                GenPanel.list_spec.loc[i, 'Abs'] =  GenPanel.const_spec[i].loc[min(GenPanel.const_spec[i]['wl'], key=lambda x: abs(x - wavelength)),'A']
-        if self.GetParent().GetParent().tab1.typecorr == 'ready' :
-            for i in GenPanel.list_spec.index :
-                GenPanel.list_spec.loc[i, 'Abs'] =  GenPanel.ready_spec[i].loc[min(GenPanel.ready_spec[i]['wl'], key=lambda x: abs(x - wavelength)),'A']
+        typecorr = self.GetParent().GetParent().tab1.typecorr
+        spec_dict = _get_spec_dict(typecorr)
+        if spec_dict is not None:
+            for i in GenPanel.list_spec.index:
+                GenPanel.list_spec.loc[i, 'Abs'] = spec_dict[i].loc[
+                    min(spec_dict[i]['wl'], key=lambda x: abs(x - wavelength)), 'A'
+                ]
         print(GenPanel.list_spec)
         self.update_right_panel('time-trace')
     
@@ -2409,20 +2469,14 @@ class TabTwo(wx.Panel):
 
     
     def on_diffserie(self, event):
-        # n=len(GenPanel.raw_spec)-1
-        # GenPanel.diffserie[]
-        if self.GetParent().GetParent().tab1.typecorr == 'raw' :
-            for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                GenPanel.diffserie[spec]=GenPanel.raw_spec[spec].copy()
-                GenPanel.diffserie[spec].A=GenPanel.raw_spec[spec]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
-        if self.GetParent().GetParent().tab1.typecorr == 'const' :
-            for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                GenPanel.diffserie[spec]=GenPanel.const_spec[spec].copy()
-                GenPanel.diffserie[spec].A=GenPanel.const_spec[spec].A-GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
-        if self.GetParent().GetParent().tab1.typecorr == 'ready' :
-            for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                GenPanel.diffserie[spec]=GenPanel.ready_spec[spec].copy()
-                GenPanel.diffserie[spec].A=GenPanel.ready_spec[spec].A-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A #storing the difference spectrum
+        typecorr = self.GetParent().GetParent().tab1.typecorr
+        spec_dict = _get_spec_dict(typecorr)
+        if spec_dict is None:
+            return
+        ref_name = list(GenPanel.list_spec.file_name)[0]
+        for spec in list(GenPanel.list_spec.file_name)[1:]:  # sorted by time
+            GenPanel.diffserie[spec] = spec_dict[spec].copy()
+            GenPanel.diffserie[spec].A = spec_dict[spec].A - spec_dict[ref_name].A
         self.update_right_panel('diffserie')
     def on_2D_plot(self, event):
         if self.GetParent().GetParent().tab1.typecorr == 'const' :
@@ -2472,47 +2526,22 @@ class TabTwo(wx.Panel):
         #BUG to SVD here : the tokeep is failing when None and m becomes 0
         tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
         # print(tokeep_dark)
-        if self.GetParent().GetParent().tab1.typecorr == 'raw' :
-            i=0
-            n=len(GenPanel.raw_spec)-1
-            m=len(GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark])
-            print(n, m)
-            A=np.zeros((m,n),dtype=np.float32)
-            for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)]]
-                A[:,i] = GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark] #storing the difference spectrum
-                i+=1
-
-        elif self.GetParent().GetParent().tab1.typecorr == 'const' :
-            i=0
-            n=len(GenPanel.const_spec)-1
-            m=len(GenPanel.const_spec[list(GenPanel.const_spec.keys())[0]].wl[GenPanel.const_spec[list(GenPanel.const_spec.keys())[0]].wl.between(300,800)][tokeep_dark])
-            # print(n, m)
-            A=np.zeros((m,n),dtype=np.float32)
-            for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.const_spec[spec].wl[GenPanel.const_spec[spec].wl.between(300,800)]]
-                # print(tokeep)
-                # print(len(tokeep))
-                # print(len(GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[spec].wl.between(300,800)][tokeep]))
-                # print(len(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)][tokeep]))
-                # print(len(tokeep))
-                # print(len(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)]))
-                # print(len(tokeep_dark))
-                # print(len(GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]))
-                A[:,i] = GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(300,800)][tokeep]-GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.const_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)][tokeep_dark] #storing the difference spectrum
-                
-                i+=1
-
-        elif self.GetParent().GetParent().tab1.typecorr == 'ready' :
-            i=0
-            n=len(GenPanel.ready_spec)-1
-            m=len(GenPanel.ready_spec[list(GenPanel.ready_spec.keys())[0]].wl[GenPanel.ready_spec[list(GenPanel.ready_spec.keys())[0]].wl.between(300,800)][tokeep_dark])
-            
-            A=np.zeros((m,n),dtype=np.float32)
-            for spec in list(GenPanel.list_spec.file_name)[1:]: #sorting by time
-                tokeep=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.ready_spec[spec].wl[GenPanel.ready_spec[spec].wl.between(300,800)]]
-                A[:,i] = GenPanel.ready_spec[spec].A[GenPanel.ready_spec[spec].wl.between(300,800)][tokeep]-GenPanel.ready_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.ready_spec[spec].wl.between(300,800)][tokeep_dark] #storing the difference spectrum
-                i+=1
+        typecorr = self.GetParent().GetParent().tab1.typecorr
+        spec_dict = _get_spec_dict(typecorr)
+        if spec_dict is None:
+            return
+        ref_name = list(GenPanel.list_spec.file_name)[0]
+        n = len(spec_dict) - 1
+        m = len(spec_dict[ref_name].wl[spec_dict[ref_name].wl.between(300, 800)][tokeep_dark])
+        print(n, m)
+        A = np.zeros((m, n), dtype=np.float32)
+        for i, spec in enumerate(list(GenPanel.list_spec.file_name)[1:]):  # sorted by time
+            tokeep = [np.isnan(laser_blue) or np.isnan(laser_red) or x < laser_blue or x > laser_red
+                      for x in spec_dict[spec].wl[spec_dict[spec].wl.between(300, 800)]]
+            A[:, i] = (
+                spec_dict[spec].A[spec_dict[spec].wl.between(300, 800)][tokeep]
+                - spec_dict[ref_name].A[spec_dict[ref_name].wl.between(300, 800)][tokeep_dark]
+            )
 
         U, S, VT = np.linalg.svd(A) 
         # print(S)
@@ -2562,93 +2591,54 @@ class TabTwo(wx.Panel):
         self.update_right_panel('SVD')
         
     def on_save(self, event):
+        print('balise')
         wildcard = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
-        dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-        if dialog.ShowModal() == wx.ID_OK:
-            totalpath = dialog.GetPath()
-            # file_path2 = file_path.split('/')[:-1]
-            if platform.system() == 'Windows' :
-                dirsep='\\'
-            else:# or platform.system() == 'MacOS'
-                dirsep='/'
-            file_path=''
-            for i in totalpath.split(dirsep)[:-1]:
-                file_path+=i+dirsep
-            print(file_path)
-            file_name = totalpath.split(dirsep)[-1]
-                
+        dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard,
+                               style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+        if dialog.ShowModal() != wx.ID_OK:
+            dialog.Destroy()
+            return
+        totalpath = dialog.GetPath()
         dialog.Destroy()
-        towrite_raw_spectra=GenPanel.raw_spec[next(iter(GenPanel.raw_spec))].drop(columns=['wl','A'])
-        for spec in GenPanel.raw_spec:
-            towrite_raw_spectra[spec]=GenPanel.raw_spec[spec].A
-            print("File" + file_path + f" '{spec}' saved in: raw_{file_name}.csv in column {spec}")
-        towrite_raw_spectra.to_csv(file_path + 'raw_' +  file_name + ".csv", index=True)
-        if len(GenPanel.const_spec)==len(GenPanel.raw_spec):
-            towrite_constant_spectra=GenPanel.const_spec[next(iter(GenPanel.const_spec))].drop(columns=['wl','A'])
-            for spec in GenPanel.const_spec:
-                towrite_constant_spectra[spec]=GenPanel.const_spec[spec].A
-                print("File" + file_path + f" '{spec}' saved in: constant_{file_name}.csv in column {spec}")
-            towrite_constant_spectra.to_csv(file_path + 'constant_' +  file_name + ".csv", index=True)
-        if len(GenPanel.ready_spec)==len(GenPanel.raw_spec):
-            towrite_ready_spectra=GenPanel.ready_spec[next(iter(GenPanel.ready_spec))].drop(columns=['wl','A'])
-            for spec in GenPanel.ready_spec:
-                towrite_ready_spectra[spec]=GenPanel.ready_spec[spec].A
-                print("File" + file_path + f" '{spec}' saved in: ready_{file_name}.csv in column {spec}")
-            towrite_ready_spectra.to_csv(file_path + 'ready_' +  file_name + ".csv", index=True)
+
+        file_path, file_name = _save_all_spectra(totalpath)
+
         wavelength = str(self.GetParent().GetParent().tab2.field_timetrace.GetValue())
-        GenPanel.list_spec.to_csv(file_path + 'time-trace_' + wavelength + '_nm.csv', index=True)
+        GenPanel.list_spec.to_csv(
+            file_path + 'time-trace_' + wavelength + '_nm.csv', index=True
+        )
         if hasattr(self, 'scaled_spec_lSV') and len(self.scaled_spec_lSV) > 0:
-            # try:
-            tmp={}
-            for i in range(len(self.scaled_time_factors)):
-                tmp['rSV'+str(i)]=self.scaled_time_factors[i]
-            pd.DataFrame(data=tmp,index=GenPanel.list_spec.index[1:]).to_csv(file_path + file_name + '_rSV.csv',index=True)
-            
-            
-            n=len(GenPanel.raw_spec)-1
+            # Build rSV (right singular vectors: time dimension) and lSV (left
+            # singular vectors: spectral dimension) DataFrames and save them.
+            n = len(GenPanel.raw_spec) - 1
             laser_blue = GenPanel.list_spec.laser_dent_blue.min()
             laser_red = GenPanel.list_spec.laser_dent_red.max()
-            tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
-            self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
-            
-            
-            tmp={}
-            for i in range(len(self.scaled_spec_lSV)):
-                tmp['lSV'+str(i)]=self.scaled_spec_lSV[:,i]
-            pd.DataFrame(data=tmp,index=GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]-GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].A[GenPanel.raw_spec[spec].wl.between(300,800)][tokeep_dark]).to_csv(file_path + file_name + '_rSV.csv',index=True)
-            
-            # except NameError:
-                # print('no SVD results to save')
-            
-            print(self.scaled_time_factors)
-            print('separator')
-            print(self.scaled_spec_lSV)
-            
-            # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".svg", dpi=900 , transparent=True,bbox_inches='tight')
-            # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".png", dpi=900, transparent=True,bbox_inches='tight')
-            # self.GetParent().GetParent().GetParent().right_panel.figure.savefig(file_path + file_name + ".pdf", dpi=900, transparent=True,bbox_inches='tight')
-            # print("Figure saved at: " + file_path + file_name + '.png')
-            n=len(GenPanel.raw_spec)-1
-            self.rSV=pd.DataFrame(index=GenPanel.list_spec.time_code[1:], columns=['SV' + str(i) for i in range(n+1)])
-            laser_blue = GenPanel.list_spec.laser_dent_blue.min()
-            laser_red = GenPanel.list_spec.laser_dent_red.max()
-            tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
-            self.lSV=pd.DataFrame(index=GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl[GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]].wl.between(300,800)][tokeep_dark], columns=['SV' + str(i) for i in range(n+1)])
-            for i in range(0,n):
-                self.rSV['SVn'+str(i)]=self.scaled_time_factors[i]
-                self.lSV['SVn'+str(i)]=self.scaled_spec_lSV[:,i] 
+            ref_name = list(GenPanel.list_spec.file_name)[0]
+            ref_df = GenPanel.raw_spec[ref_name]
+            mask = ref_df.wl.between(280, 800)
+            tokeep_dark = [
+                np.isnan(laser_blue) or np.isnan(laser_red) or x < laser_blue or x > laser_red
+                for x in ref_df.wl[mask]
+            ]
+
+            self.rSV = pd.DataFrame(
+                index=GenPanel.list_spec.time_code[1:],
+                columns=['SV' + str(i) for i in range(n + 1)],
+            )
+            self.lSV = pd.DataFrame(
+                index=ref_df.wl[mask][tokeep_dark],
+                columns=['SV' + str(i) for i in range(n + 1)],
+            )
+            for i in range(0, n):
+                self.rSV['SV' + str(i)] = self.scaled_time_factors[i]
+                self.lSV['SV' + str(i)] = self.scaled_spec_lSV[:, i]
             self.rSV.to_csv(file_path + 'time-SV.csv', index=True)
             self.lSV.to_csv(file_path + 'spec-SV.csv', index=True)
-        
-        
+            print(f'saving the SVD results to {file_path}')
+
 
     def update_right_panel(self, typecorr):
-        if len(self.GetParent().GetParent().tab1.field_topeak.GetValue()) == 0:
-            scaling_top=280
-        else :
-            scaling_top = float(self.GetParent().GetParent().tab1.field_topeak.GetValue())
-        # print(scaling_top)
-        self.GetParent().GetParent().GetParent().right_panel.plot_data(typecorr, scaling_top)
+        _refresh_right_panel(self, typecorr)
         
     # def on_close(self, event):
     #     self.Destroy()
@@ -2786,12 +2776,7 @@ class TabThree(wx.Panel):
             GenPanel.raw_lamp[self.selection].quality = GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max()
             self.update_right_panel('quality_plot')
     def update_right_panel(self, typecorr):
-        if len(self.GetParent().GetParent().tab1.field_topeak.GetValue()) == 0:
-            scaling_top=280
-        else :
-            scaling_top = float(self.GetParent().GetParent().tab1.field_topeak.GetValue())
-        print(scaling_top)
-        self.GetParent().GetParent().GetParent().right_panel.plot_data(typecorr, scaling_top)
+        _refresh_right_panel(self, typecorr)
     def OnLaserRemove(self, event):
 
             peak_position_first=0
