@@ -1,6 +1,6 @@
 # The _ic_ OS toolbox
 
-The *in crystallo* Optical Spectroscopy (*ic*OS) toolbox is a suite of tools encased in a graphical interface, designed to make the recording and processing of absorbance and fluorescence data (both in solution and *in crystallo*) more straightforward. It was originally developed at and for the *ic*OS lab setups, but is meant to be usable by external users. Currently, it supports text-based format inputs from Ocean Optics, JASCO and Avantes (the table of available formats is at the bottom of this README file). 
+The *in crystallo* Optical Spectroscopy (*ic*OS) toolbox is a suite of tools encased in a graphical interface, designed to make the recording and processing of absorbance and fluorescence data (both in solution and *in crystallo*) more straightforward. It was originally developed at and for the *ic*OS lab setups, but is meant to be usable by external users. Currently, it supports text-based format inputs from Ocean Optics, JASCO and Avantes. 
 I intend to make the toolbox as broadly available as possible. If your files are not correctly loaded in the toolbox, please contact me at [nicolas.caramello@esrf.fr](mailto:nicolas.caramello@esrf.fr) with a copy of your files. 
 
 
@@ -11,6 +11,11 @@ It consists in three tabs: (a) the main tab, where spectra can be corrected and 
 
 # New features !
 
+- Dependencies are managed by a python project .toml file (and the conda environnement). Any missing dependencies can be installed by running 
+```bash
+python -m pip --no-deps install .
+```
+  The --no-deps flag is here to make sure pip does not try to install dependencies that are still managed by conda.
 - Timing or pH can be extracted from file names directly: 
   - Simply name your files ...pH7.0...txt or ...30ms...txt. 
   - Spectra coming from TR-icOS can be named with the usual scheme. 

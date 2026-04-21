@@ -1,208 +1,78 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Wed Jan 18 15:07:56 2023
-@author: NCARAMEL
+icOS toolbox -- treat and analyse in crystallo optical spectroscopy data.
+
+Paper: https://journals.iucr.org/j/issues/2025/03/00/jo5121/
+Author: Nicolas Caramello
+
+Dependencies are declared in pyproject.toml. If you see ImportError on
+startup, install the project's dependencies with::
+
+    pip install -r requirements.txt   # if you have one
+    # or, from the project root:
+    pip install .
+
+See the preflight check below for details.
 """
-import warnings
-warnings.simplefilter("ignore")
+
+# --- stdlib (always available) ---------------------------------------------
 import importlib
 import math
-#instlaling packages if not present 
-# from IPython.display import display
-try:
-    #import wx as wx
-    wx = importlib.import_module('wx')
-    print("wxPython is already installed.")
-except ImportError:
-    print("wxPython is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'wxPython'])
-        print("wxPython has been installed.")
-        wx = importlib.import_module('wx')
-
-try:
-    pd = importlib.import_module('pandas')
-    print("pandas is already installed.")
-except ImportError:
-    print("pandas is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'pandas'])
-        print("pandas has been installed.")
-        pd = importlib.import_module('pandas')
-
-# try:
-#     import matplotlib
-#     print("matplotlib is already installed.")
-# except ImportError:
-#     print("matplotlib is not installed. Installing now...")
-#     # Install SciPy using pip
-#     try:
-#         import pip
-#     except ImportError:
-#         print("pip is not installed. Please install pip to continue.")
-#     else:
-#         pip.main(['install', 'matplotlib'])
-#         print("matplotlib has been installed.")
-#         import matplotlib
-
-
-# from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+import os
+import platform
+import re
+import tempfile
+import warnings
+from collections import Counter
 from statistics import mean
-# from matplotlib.figure import Figure
- 
-# from matplotlib.backends.backend_wx import NavigationToolbar2Wx
-# matplotlib.use('wxAgg')
-# plt.rcParams["figure.figsize"] = (3.33/2.54,2.5/2.54)
-try:
-    import platform
-    print("platform is already installed.")
-except ImportError:
-    print("platform is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'platform'])
-        print("platform has been installed.")
-        import platform
+
+warnings.simplefilter("ignore")
 
 
-try:
-    import os
-    print("os is already installed.")
-except ImportError:
-    print("os is not installed. Installing now...")
-    # Install SciPy using pip
+# --- third-party preflight check -------------------------------------------
+# Fail fast with a helpful message if the user is missing a dependency,
+# rather than attempting to pip-install at import time (which has historically
+# caused surprises -- stdlib names like 'math' and 're' exist on PyPI as
+# unrelated packages, and `pip.main(...)` is not a supported API).
+_REQUIRED = {
+    # import_name:        pypi_name
+    "numpy":              "numpy",
+    "pandas":             "pandas",
+    "scipy":              "scipy",
+    "matplotlib":         "matplotlib",
+    "seaborn":            "seaborn",
+    "wx":                 "wxPython",
+    "wxmplot":            "wxmplot",
+}
+_missing = []
+for _import_name in _REQUIRED:
     try:
-        import pip
+        importlib.import_module(_import_name)
     except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'os'])
-        print("os has been installed.")
-        import os
+        _missing.append(_REQUIRED[_import_name])
+if _missing:
+    raise SystemExit(
+        "icOS toolbox: missing required dependencies: "
+        + ", ".join(_missing)
+        + "\nInstall with:  pip install "
+        + " ".join(_missing)
+        + "\nOr (recommended), from the project root:  pip install ."
+    )
 
-try:
-    pd = importlib.import_module('pandas')
-    print("pandas is already installed.")
-except ImportError:
-    print("pandas is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'pandas'])
-        print("pandas has been installed.")
-        pd = importlib.import_module('pandas')
+import numpy as np
+import pandas as pd
+import scipy as sp
+import scipy.optimize  # noqa: F401 -- for sp.optimize.curve_fit
+import seaborn as sns
+import wx
+import wxmplot.interactive as wi
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+from scipy import signal
+from wxmplot import PlotPanel
 
-try:
-    mth = importlib.import_module('math')
-    print("math is already installed.")
-except ImportError:
-    print("math is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'math'])
-        print("math has been installed.")
-        mth = importlib.import_module('math')
 
-try:
-    sns = importlib.import_module('seaborn')
-    print("seaborn is already installed.")
-except ImportError:
-    print("seaborn is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'seaborn'])
-        print("seaborn has been installed.")
-        sns = importlib.import_module('seaborn')
-
-try:
-    np = importlib.import_module('numpy')
-    print("numpy is already installed.")
-except ImportError:
-    print("numpy is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'numpy'])
-        print("numpy has been installed.")
-        np = importlib.import_module('numpy') 
-
-try:
-    sp = importlib.import_module('scipy')
-    from scipy import signal
-    print("SciPy is already installed.")
-except ImportError:
-    print("SciPy is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'scipy'])
-        print("SciPy has been installed.")
-        sp = importlib.import_module('scipy')
-# from scipy import signal 
-
-try:
-    re = importlib.import_module('re')
-    print("re is already installed.")
-except ImportError:
-    print("re is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 're'])
-        print("re has been installed.")
-        wx = importlib.import_module('re')
-try :
-    import wxmplot.interactive as wi
-    from wxmplot import PlotPanel
-    print("wxmplot is already installed.")
-except ImportError:
-    print("wxmplot is not installed. Installing now...")
-    # Install SciPy using pip
-    try:
-        import pip
-    except ImportError:
-        print("pip is not installed. Please install pip to continue.")
-    else:
-        pip.main(['install', 'wxmplot'])
-        print("wxmplot has been installed.")
-        import wxmplot.interactive as wi
-        from wxmplot import PlotPanel
-    
 def rgb_to_hex(rgb):
     """
     Convert RGB tuple of floats to HEX string.
@@ -219,31 +89,6 @@ def rgb_to_hex(rgb):
     b = int(b * 255)
     return '#{0:02x}{1:02x}{2:02x}'.format(r, g, b)
 
-
-
-# import matplotlib
-import matplotlib.pyplot as plt  
-
-plt.rcParams.update({'font.size': 50})
-# matplotlib.use('QTAgg')
-from matplotlib.colors import LinearSegmentedColormap
-from collections import Counter
-import tempfile
-
-
-
-if 'app' in vars():
-    del app
-
-
-system = platform.system()
-if system == "Windows":
-    path = os.path.join("C:\\", "path", "to", "save", "output")
-else:
-    path = os.path.join("/", "path", "to", "save", "output")
-
-
-import numpy as np  # Importing numpy library for mathematical operations
 
 def straightforward_solution(x, a, b, c, d):
     """
@@ -2820,7 +2665,13 @@ class TabThree(wx.Panel):
     
 # Suppress GTK warning
 
-if __name__ == "__main__":
+
+def main():
+    """Launch the icOS toolbox GUI. Entry point for ``icos-toolbox``."""
     app = wx.App()
-    frame = MainFrame()
+    MainFrame()
     app.MainLoop()
+
+
+if __name__ == "__main__":
+    main()
