@@ -449,7 +449,7 @@ def multiscan_opener(file_path):
                 raw_spec[i].columns=['wl','A']
                 raw_spec[i].index=raw_spec[i].wl
                 print()
-                # GenPanel.list_spec.loc[i,'file_name']=i
+                # app_state.list_spec.loc[i,'file_name']=i
                 if 'dark' in i :
                     tmpstamp.append(1)
                 elif re.search(r'__\d+__', i):
@@ -578,9 +578,9 @@ def _get_spec_dict(typecorr):
     instead of falling off the end of an if/elif chain.
     """
     return {
-        'raw': GenPanel.raw_spec,
-        'const': GenPanel.const_spec,
-        'ready': GenPanel.ready_spec,
+        'raw': app_state.raw_spec,
+        'const': app_state.const_spec,
+        'ready': app_state.ready_spec,
     }.get(typecorr)
 
 
@@ -630,7 +630,7 @@ def _save_all_spectra(totalpath):
     print(file_dir)
 
     _write_spec_dict_to_csv(
-        GenPanel.raw_spec,
+        app_state.raw_spec,
         file_dir + 'raw_' + file_name + '.csv',
         label='raw',
     )
@@ -638,15 +638,15 @@ def _save_all_spectra(totalpath):
     # Only write const / ready if the counts match raw (i.e. every spectrum
     # has been through that stage); otherwise the CSV would be a mix of old
     # and new and that's not what the user expects.
-    if len(GenPanel.const_spec) == len(GenPanel.raw_spec):
+    if len(app_state.const_spec) == len(app_state.raw_spec):
         _write_spec_dict_to_csv(
-            GenPanel.const_spec,
+            app_state.const_spec,
             file_dir + 'constant_' + file_name + '.csv',
             label='constant',
         )
-    if len(GenPanel.ready_spec) == len(GenPanel.raw_spec):
+    if len(app_state.ready_spec) == len(app_state.raw_spec):
         _write_spec_dict_to_csv(
-            GenPanel.ready_spec,
+            app_state.ready_spec,
             file_dir + 'ready_' + file_name + '.csv',
             label='ready',
         )
@@ -678,17 +678,63 @@ def _refresh_right_panel(panel, typecorr):
     splitter.right_panel.plot_data(typecorr, scaling_top)
 
 
+class AppState:
+    """
+    Single source of truth for all cross-panel spectroscopy state.
+
+    Previously this state lived as class attributes on ``GenPanel``, which
+    meant every panel instance shared the same dicts/DataFrames — fine as
+    long as the app ran once, but re-opening or re-importing leaked old
+    spectra between sessions. A module-level singleton gives us a clean
+    reset (``app_state = AppState()``) and makes the shared state
+    discoverable rather than hidden across a class hierarchy.
+    """
+
+    def __init__(self):
+        # Raw lamp data (I, bgd, I0) per spectrum name — only populated for
+        # TRicOS files; other instruments go straight to ``raw_spec``.
+        self.raw_lamp = {}
+
+        # Spectra at each processing stage, keyed by file/spec name.
+        # All three dicts share the same keys once a spectrum has been
+        # processed through the corresponding correction step.
+        self.raw_spec = {}
+        self.const_spec = {}
+        self.ready_spec = {}
+
+        # Difference spectra.
+        self.diffspec = pd.DataFrame(data=None, columns=['wl', 'A'])
+        self.diffserie = {}
+
+        # Per-spectrum metadata table; indexed by file_name.
+        self.list_spec = pd.DataFrame(
+            data=None,
+            columns=['file_name', 'time_code', 'Abs',
+                     'laser_dent_blue', 'laser_dent_red'],
+        )
+        self.list_spec.index = self.list_spec.file_name
+
+        # User preferences carried across panels.
+        self.smoothing = 'savgol'
+        self.correction = 'full'
+
+        # Dynamically populated by user actions; created here so downstream
+        # reads don't need hasattr() guards.
+        self.diff_selections = None
+        self.Z = None
+
+
+app_state = AppState()
+
+
 class GenPanel(wx.Panel):
-    raw_lamp={}
-    raw_spec = {}
-    const_spec = {}
-    ready_spec = {}
-    diffserie ={}
-    diffspec = pd.DataFrame(data=None,columns=['wl','A'])
-    list_spec = pd.DataFrame(data=None, columns = ['file_name','time_code','Abs','laser_dent_blue','laser_dent_red'])
-    list_spec.index = list_spec.file_name
-    smoothing='savgol'
-    correction='full'
+    """
+    Thin base class kept so existing panels (RightPanel, LeftPanel, etc.)
+    can still inherit from it. Previously it carried cross-panel state as
+    class attributes; that state now lives on the module-level
+    ``app_state`` singleton — see :class:`AppState`.
+    """
+    pass
 
 class MainFrame(wx.Frame):
     def __init__(self):
@@ -896,9 +942,9 @@ class RightPanel(GenPanel):
         self.plot_panel.clear()
 
         handlers = {
-            'raw':          lambda: self._plot_spec_series(GenPanel.raw_spec, scaling_top, apply_display_scaling=True),
-            'const':        lambda: self._plot_spec_series(GenPanel.const_spec, scaling_top, apply_display_scaling=False),
-            'ready':        lambda: self._plot_spec_series(GenPanel.ready_spec, scaling_top, apply_display_scaling=False),
+            'raw':          lambda: self._plot_spec_series(app_state.raw_spec, scaling_top, apply_display_scaling=True),
+            'const':        lambda: self._plot_spec_series(app_state.const_spec, scaling_top, apply_display_scaling=False),
+            'ready':        lambda: self._plot_spec_series(app_state.ready_spec, scaling_top, apply_display_scaling=False),
             'diff':         self._plot_diff,
             'diffserie':    self._plot_diffserie,
             'time-trace':   self._plot_time_trace,
@@ -926,7 +972,7 @@ class RightPanel(GenPanel):
         time (see ``on_constant_corr`` and ``on_scat_corr``). Applying it
         again at plot time would double-normalize them.
 
-        Iteration order follows ``GenPanel.list_spec.file_name`` (time-sorted)
+        Iteration order follows ``app_state.list_spec.file_name`` (time-sorted)
         for a consistent color-to-time mapping across all three stages.
         """
         if not spec_dict:
@@ -943,7 +989,7 @@ class RightPanel(GenPanel):
 
         # Always iterate by time-sorted order; fall back to dict order if
         # list_spec is empty (e.g. during startup).
-        names = list(GenPanel.list_spec.file_name) if len(GenPanel.list_spec) else list(spec_dict)
+        names = list(app_state.list_spec.file_name) if len(app_state.list_spec) else list(spec_dict)
 
         for n, name in enumerate(names):
             if name not in spec_dict:
@@ -991,11 +1037,11 @@ class RightPanel(GenPanel):
     def _typecorr_from_dict(spec_dict):
         """Reverse-lookup of the typecorr label for a given spec_dict. Used
         to pass the right typecorr to ``mass_center``."""
-        if spec_dict is GenPanel.raw_spec:
+        if spec_dict is app_state.raw_spec:
             return 'raw'
-        if spec_dict is GenPanel.const_spec:
+        if spec_dict is app_state.const_spec:
             return 'const'
-        if spec_dict is GenPanel.ready_spec:
+        if spec_dict is app_state.ready_spec:
             return 'ready'
         return None
 
@@ -1004,8 +1050,8 @@ class RightPanel(GenPanel):
     def _plot_diff(self):
         """Single difference spectrum (computed on TabOne)."""
         self.plot_panel.oplot(
-            np.array(GenPanel.diffspec.wl),
-            np.array(GenPanel.diffspec.A),
+            np.array(app_state.diffspec.wl),
+            np.array(app_state.diffspec.A),
             linewidth=2, style='line', marker=None, markersize=0,
             ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
             title='Difference spectrum',
@@ -1013,14 +1059,14 @@ class RightPanel(GenPanel):
 
     def _plot_diffserie(self):
         """Series of diff spectra (one per spec vs. reference)."""
-        if not GenPanel.diffserie:
+        if not app_state.diffserie:
             return
         pal = self._get_palette()
-        palette = sns.color_palette(palette=pal, n_colors=len(GenPanel.raw_spec))
-        batch = len(GenPanel.diffserie) > 30
+        palette = sns.color_palette(palette=pal, n_colors=len(app_state.raw_spec))
+        batch = len(app_state.diffserie) > 30
         list_toplot = []
-        for i, spec in enumerate(GenPanel.diffserie):
-            df = GenPanel.diffserie[spec]
+        for i, spec in enumerate(app_state.diffserie):
+            df = app_state.diffserie[spec]
             if batch:
                 list_toplot.append((np.array(df.wl), np.array(df.A)))
             else:
@@ -1049,8 +1095,8 @@ class RightPanel(GenPanel):
         startfit = float(tab2.field_kinetic_start.GetValue())
         dose = float(tab2.abcisse_field.GetValue())
         self.plot_panel.oplot(
-            (np.array(GenPanel.list_spec.time_code) - startfit) * dose,
-            np.array(GenPanel.list_spec.Abs),
+            (np.array(app_state.list_spec.time_code) - startfit) * dose,
+            np.array(app_state.list_spec.Abs),
             marker='o', markersize=4, color='blue', linewidth=0,
             ylabel='Absorbance [AU]', xlabel='Time [s]',
             title='Absorbance at ' + wavelength + ' over time',
@@ -1064,8 +1110,8 @@ class RightPanel(GenPanel):
         startfit = float(tab2.field_kinetic_start.GetValue())
         dose = float(tab2.abcisse_field.GetValue())
         self.plot_panel.oplot(
-            (np.array(GenPanel.list_spec.time_code) - startfit) * dose,
-            np.array(GenPanel.list_spec.Abs),
+            (np.array(app_state.list_spec.time_code) - startfit) * dose,
+            np.array(app_state.list_spec.Abs),
             color='blue',
             marker='o', markersize=4, linewidth=0, alpha=0.5, style=None,
             ylabel='Absorbance [AU]', xlabel='Time [s]',
@@ -1085,22 +1131,22 @@ class RightPanel(GenPanel):
     def _plot_SVD(self):
         """Left singular vectors (spectral dimension) overlaid on one panel."""
         pal = self._get_palette()
-        laser_blue = GenPanel.list_spec.laser_dent_blue.min()
-        laser_red = GenPanel.list_spec.laser_dent_red.max()
-        ref_df = GenPanel.raw_spec[list(GenPanel.raw_spec.keys())[0]]
+        laser_blue = app_state.list_spec.laser_dent_blue.min()
+        laser_red = app_state.list_spec.laser_dent_red.max()
+        ref_df = app_state.raw_spec[list(app_state.raw_spec.keys())[0]]
         mask = ref_df.wl.between(300, 800)
         tokeep = [
             np.isnan(laser_blue) or np.isnan(laser_red) or x < laser_blue or x > laser_red
             for x in ref_df.wl[mask]
         ]
-        n_plot = min(5, len(GenPanel.raw_spec))
+        n_plot = min(5, len(app_state.raw_spec))
         palette = sns.color_palette(palette=pal, n_colors=n_plot)
-        batch = len(GenPanel.raw_spec) > 30
+        batch = len(app_state.raw_spec) > 30
         list_toplot = []
         scaled = self._tab2().scaled_spec_lSV
         wl_axis = np.array(ref_df.wl[mask][tokeep])
 
-        for i in range(min(5, len(GenPanel.raw_spec) - 1)):
+        for i in range(min(5, len(app_state.raw_spec) - 1)):
             y = np.array(scaled[:, i])
             if batch:
                 list_toplot.append((wl_axis, y))
@@ -1128,14 +1174,14 @@ class RightPanel(GenPanel):
         chosen = self.GetParent().left_panel.tab3.selection
         print('plotting quality')
         list_toplot = []
-        for i in GenPanel.raw_lamp[chosen].index:
+        for i in app_state.raw_lamp[chosen].index:
             list_toplot.append((
-                np.array([GenPanel.raw_spec[chosen].wl[i]]),
-                np.array([GenPanel.raw_spec[chosen].A[i]]),
+                np.array([app_state.raw_spec[chosen].wl[i]]),
+                np.array([app_state.raw_spec[chosen].A[i]]),
             ))
         self.plot_panel.plot_quality(
             datalist=list_toplot,
-            I0=np.array(GenPanel.raw_lamp[chosen].I0),
+            I0=np.array(app_state.raw_lamp[chosen].I0),
         )
 
 
@@ -1401,7 +1447,7 @@ class TabOne(wx.Panel):
                         # print(file_name)
                         if file_path[-4:] == '.txt':
                             toaverage.append(file_name)
-                            GenPanel.raw_lamp[file_name] = pd.read_csv(filepath_or_buffer= file_path,
+                            app_state.raw_lamp[file_name] = pd.read_csv(filepath_or_buffer= file_path,
                                       sep= ";",
                                       decimal=".",
                                       skiprows=8,
@@ -1412,46 +1458,46 @@ class TabOne(wx.Panel):
                                       # names=['wl','I','bgd','I0','A'],
                                       engine="python")
 
-                            GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].index
+                            app_state.raw_lamp[file_name].index=app_state.raw_lamp[list(app_state.raw_lamp.keys())[0]].index
                             isthereAbs=False
-                            if len(GenPanel.raw_lamp[file_name].columns) == 5:
-                                GenPanel.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0', 'A']
+                            if len(app_state.raw_lamp[file_name].columns) == 5:
+                                app_state.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0', 'A']
                                 isthereAbs=True
-                            elif len(GenPanel.raw_lamp[file_name].columns) == 4:
-                                GenPanel.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0']
+                            elif len(app_state.raw_lamp[file_name].columns) == 4:
+                                app_state.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0']
 
 
-                            GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[file_name].wl
+                            app_state.raw_lamp[file_name].index=app_state.raw_lamp[file_name].wl
 
 
                     # Proper N-way arithmetic mean across all selected spectra.
                     # The previous running-pairwise average ((avg + new)/2) was
                     # biased: for N spectra it weighted later files more heavily.
-                    average_signal = GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].copy()
+                    average_signal = app_state.raw_lamp[list(app_state.raw_lamp.keys())[0]].copy()
                     average_signal['wl'] = average_signal.index.astype(float)
 
                     stack_I = pd.concat(
-                        [GenPanel.raw_lamp[name]['I'] for name in toaverage],
+                        [app_state.raw_lamp[name]['I'] for name in toaverage],
                         axis=1,
                     )
                     average_signal['I'] = stack_I.mean(axis=1)
 
                     if isthereAbs:
                         stack_A = pd.concat(
-                            [GenPanel.raw_lamp[name]['A'] for name in toaverage],
+                            [app_state.raw_lamp[name]['A'] for name in toaverage],
                             axis=1,
                         )
                         average_signal['A'] = stack_A.mean(axis=1)
                     # print(average_signal)
                     avgname=toaverage[0]#''.join(toaverage)
-                    GenPanel.raw_spec[avgname]=Absorbance(average_signal.copy())
-                            # print(GenPanel.raw_lamp[file_name].columns)
-                    # print(f"File '{avgname}' added spectra list with data: {GenPanel.raw_spec[avgname].A}")
-                    GenPanel.list_spec.loc[avgname,'file_name']=avgname
-                    GenPanel.list_spec.loc[avgname,'time_code']=extract_time_code(avgname)
-                    GenPanel.list_spec.loc[avgname,'Abs']=GenPanel.raw_spec[avgname].loc[min(GenPanel.raw_spec[avgname]['wl'], key=lambda x: abs(x - 280)),'A']
-                    GenPanel.list_spec.loc[avgname,'laser_dent_blue']=np.nan
-                    GenPanel.list_spec.loc[avgname, 'laser_dent_red']=np.nan
+                    app_state.raw_spec[avgname]=Absorbance(average_signal.copy())
+                            # print(app_state.raw_lamp[file_name].columns)
+                    # print(f"File '{avgname}' added spectra list with data: {app_state.raw_spec[avgname].A}")
+                    app_state.list_spec.loc[avgname,'file_name']=avgname
+                    app_state.list_spec.loc[avgname,'time_code']=extract_time_code(avgname)
+                    app_state.list_spec.loc[avgname,'Abs']=app_state.raw_spec[avgname].loc[min(app_state.raw_spec[avgname]['wl'], key=lambda x: abs(x - 280)),'A']
+                    app_state.list_spec.loc[avgname,'laser_dent_blue']=np.nan
+                    app_state.list_spec.loc[avgname, 'laser_dent_red']=np.nan
                     self.update_right_panel('raw')
                 dialog.Destroy()
             elif self.avg == 'Open a series':
@@ -1483,7 +1529,7 @@ class TabOne(wx.Panel):
                         # print(file_name)
                         if file_path[-4:] == '.txt':
                             # toaverage.append(file_name)
-                            GenPanel.raw_lamp[file_name] = pd.read_csv(filepath_or_buffer= file_path,
+                            app_state.raw_lamp[file_name] = pd.read_csv(filepath_or_buffer= file_path,
                                       sep= ";",
                                       decimal=".",
                                       skiprows=8,
@@ -1494,23 +1540,23 @@ class TabOne(wx.Panel):
                                       # names=['wl','I','bgd','I0','A'],
                                       engine="python")
 
-                            GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].index
+                            app_state.raw_lamp[file_name].index=app_state.raw_lamp[list(app_state.raw_lamp.keys())[0]].index
                             isthereAbs=False
-                            if len(GenPanel.raw_lamp[file_name].columns) == 5:
-                                GenPanel.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0', 'A']
+                            if len(app_state.raw_lamp[file_name].columns) == 5:
+                                app_state.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0', 'A']
                                 isthereAbs=True
-                            elif len(GenPanel.raw_lamp[file_name].columns) == 4:
-                                GenPanel.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0']
+                            elif len(app_state.raw_lamp[file_name].columns) == 4:
+                                app_state.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0']
 
 
-                            GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[file_name].wl
-                            GenPanel.raw_spec[file_name]=Absorbance(GenPanel.raw_lamp[file_name].copy())
-                            # print(f"File '{file_name}' added spectra list with data: {GenPanel.raw_spec[file_name].A}")
-                            GenPanel.list_spec.loc[file_name,'file_name']=file_name
-                            GenPanel.list_spec.loc[file_name,'time_code']=extract_time_code(file_name)
-                            GenPanel.list_spec.loc[file_name,'Abs']=GenPanel.raw_spec[file_name].loc[min(GenPanel.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
-                            GenPanel.list_spec.loc[file_name,'laser_dent_blue']=np.nan
-                            GenPanel.list_spec.loc[file_name, 'laser_dent_red']=np.nan
+                            app_state.raw_lamp[file_name].index=app_state.raw_lamp[file_name].wl
+                            app_state.raw_spec[file_name]=Absorbance(app_state.raw_lamp[file_name].copy())
+                            # print(f"File '{file_name}' added spectra list with data: {app_state.raw_spec[file_name].A}")
+                            app_state.list_spec.loc[file_name,'file_name']=file_name
+                            app_state.list_spec.loc[file_name,'time_code']=extract_time_code(file_name)
+                            app_state.list_spec.loc[file_name,'Abs']=app_state.raw_spec[file_name].loc[min(app_state.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
+                            app_state.list_spec.loc[file_name,'laser_dent_blue']=np.nan
+                            app_state.list_spec.loc[file_name, 'laser_dent_red']=np.nan
 
 
                     self.update_right_panel('raw')
@@ -1527,21 +1573,21 @@ class TabOne(wx.Panel):
                     # filename_raw = file_path.split(dirsep)[-1]
 
 
-                    GenPanel.raw_spec, tmpstamps = multiscan_opener(file_path)
+                    app_state.raw_spec, tmpstamps = multiscan_opener(file_path)
 
                     # read the time-stamp for each spectrum
 
 
-                    for spec in  GenPanel.raw_spec:
-                            GenPanel.list_spec.loc[spec,'file_name']=spec
+                    for spec in  app_state.raw_spec:
+                            app_state.list_spec.loc[spec,'file_name']=spec
                             # print(int(max(re.findall(r'pH\d+', name_correct), key = len)[2:]))
-                            GenPanel.list_spec.loc[spec,'Abs']=GenPanel.raw_spec[spec].loc[min(GenPanel.raw_spec[spec]['wl'], key=lambda x: abs(x - 280)),'A']
-                            GenPanel.list_spec.loc[spec,'laser_dent_blue']=np.nan
-                            GenPanel.list_spec.loc[spec, 'laser_dent_red']=np.nan
-                            GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec]
+                            app_state.list_spec.loc[spec,'Abs']=app_state.raw_spec[spec].loc[min(app_state.raw_spec[spec]['wl'], key=lambda x: abs(x - 280)),'A']
+                            app_state.list_spec.loc[spec,'laser_dent_blue']=np.nan
+                            app_state.list_spec.loc[spec, 'laser_dent_red']=np.nan
+                            app_state.list_spec.loc[spec,'time_code']=tmpstamps[spec]
 
-                    print(f"File '{spec}' added to dictionary with data: {GenPanel.raw_spec[spec].A}")
-                # print(GenPanel.list_spec)
+                    print(f"File '{spec}' added to dictionary with data: {app_state.raw_spec[spec].A}")
+                # print(app_state.list_spec)
                 self.update_right_panel('raw')
             dialog.Destroy()
 
@@ -1570,14 +1616,14 @@ class TabOne(wx.Panel):
                         # print(toaverage[spec][toaverage[spec].wl.between(379,381)].A)
                         tmp.A+=toaverage[spec].A
                     tmp.A=tmp.A/len(toaverage.keys())
-                    GenPanel.raw_spec[name_correct]=tmp
-                    print(GenPanel.raw_spec[name_correct])
-                    GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
-                    GenPanel.list_spec.loc[name_correct,'time_code']=extract_time_code(name_correct)
-                    GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
-                    GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
-                    GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
-                    print(f"File '{name_correct}' added to dictionary with data: {GenPanel.raw_spec[name_correct].A}")
+                    app_state.raw_spec[name_correct]=tmp
+                    print(app_state.raw_spec[name_correct])
+                    app_state.list_spec.loc[name_correct,'file_name']=name_correct
+                    app_state.list_spec.loc[name_correct,'time_code']=extract_time_code(name_correct)
+                    app_state.list_spec.loc[name_correct,'Abs']=app_state.raw_spec[name_correct].loc[min(app_state.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
+                    app_state.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
+                    app_state.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
+                    print(f"File '{name_correct}' added to dictionary with data: {app_state.raw_spec[name_correct].A}")
                 else:
                      for file_path in file_paths:
                          pathtospec=''
@@ -1598,22 +1644,22 @@ class TabOne(wx.Panel):
                          name_correct = file_path.split(dirsep)[-1][0:-4]
                          # print(name_correct)
                          if file_path[-4:] == '.txt' or file_path[-4:] == '.asc' or file_path[-4:] == '.csv':
-                             GenPanel.raw_spec[name_correct] = universal_opener(file_path)
-                             # GenPanel.raw_spec[name_correct].index=GenPanel.raw_spec[name_correct].wl
-                             print(GenPanel.raw_spec[name_correct])
-                             GenPanel.list_spec.loc[name_correct,'file_name']=name_correct
-                         GenPanel.list_spec.loc[name_correct,'time_code']=extract_time_code(name_correct)
-                         GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
-                         GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
-                         GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
+                             app_state.raw_spec[name_correct] = universal_opener(file_path)
+                             # app_state.raw_spec[name_correct].index=app_state.raw_spec[name_correct].wl
+                             print(app_state.raw_spec[name_correct])
+                             app_state.list_spec.loc[name_correct,'file_name']=name_correct
+                         app_state.list_spec.loc[name_correct,'time_code']=extract_time_code(name_correct)
+                         app_state.list_spec.loc[name_correct,'Abs']=app_state.raw_spec[name_correct].loc[min(app_state.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
+                         app_state.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
+                         app_state.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
 
 
-                         print(f"File '{name_correct}' added to dictionary with data: {GenPanel.raw_spec[name_correct].A}")
-                # print(GenPanel.list_spec)
+                         print(f"File '{name_correct}' added to dictionary with data: {app_state.raw_spec[name_correct].A}")
+                # print(app_state.list_spec)
                 self.update_right_panel('raw')
             dialog.Destroy()
-        GenPanel.list_spec.sort_values(by = ['time_code'], axis=0, ascending=True, inplace=True)
-        print(GenPanel.list_spec.time_code)
+        app_state.list_spec.sort_values(by = ['time_code'], axis=0, ascending=True, inplace=True)
+        print(app_state.list_spec.time_code)
         # Plot the DataFrame
 
 
@@ -1624,10 +1670,10 @@ class TabOne(wx.Panel):
         baseline_red = float(self.field_baseline_red.GetValue())
         if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
             scaling_top = float(self.field_topeak.GetValue())
-        for i in GenPanel.raw_spec:
-            segmentend=GenPanel.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
-            tmp=GenPanel.raw_spec[i].copy()
-            tmp.A-=mean(GenPanel.raw_spec[i].A[segmentend])
+        for i in app_state.raw_spec:
+            segmentend=app_state.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
+            tmp=app_state.raw_spec[i].copy()
+            tmp.A-=mean(app_state.raw_spec[i].A[segmentend])
             if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
                 if scaling_top == 0 :
                     tmp_scaling_top=float(tmp.A[tmp.wl.between(300,800,inclusive='both')].idxmax())
@@ -1637,22 +1683,22 @@ class TabOne(wx.Panel):
                     tmp.A*=1/tmp.A[tmp.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 raw_window = self.GetParent().GetParent().tab3.smooth_window_field.GetValue()
-                if GenPanel.smoothing == 'savgol':
+                if app_state.smoothing == 'savgol':
                     window = validated_savgol_window(raw_window, polyorder=3)
                     tmp.A = signal.savgol_filter(
                         x=tmp.A.copy(),
                         window_length=window,
                         polyorder=3,
                     )
-                elif GenPanel.smoothing == 'rolling':
+                elif app_state.smoothing == 'rolling':
                     try:
                         window = max(1, int(float(str(raw_window).replace(",", "."))))
                     except (ValueError, TypeError):
                         window = 21
                     tmp.A = tmp.A.rolling(window=window).mean()
-            GenPanel.const_spec[i]=tmp.copy()
-            GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
-            print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
+            app_state.const_spec[i]=tmp.copy()
+            app_state.const_spec[i].index=app_state.raw_spec[i].wl
+            print(f"Spectrum '{i}' corrected: {app_state.const_spec[i].A}")
         self.update_right_panel(self.typecorr)
 
     def on_scat_corr(self, event):
@@ -1667,28 +1713,28 @@ class TabOne(wx.Panel):
 
         n=0
         # this plots each fitted baseline against the raw data, highlighting the chose segments
-        for i in GenPanel.raw_spec :
-            tmp=GenPanel.raw_spec[i].copy()
+        for i in app_state.raw_spec :
+            tmp=app_state.raw_spec[i].copy()
             if self.GetParent().GetParent().tab1.smoothing_checkbox.GetValue() :
                 raw_window = self.GetParent().GetParent().tab3.smooth_window_field.GetValue()
-                if GenPanel.smoothing == 'savgol':
+                if app_state.smoothing == 'savgol':
                     window = validated_savgol_window(raw_window, polyorder=3)
                     tmp.A = signal.savgol_filter(
                         x=tmp.A.copy(),
                         window_length=window,
                         polyorder=3,
                     )
-                elif GenPanel.smoothing == 'rolling':
+                elif app_state.smoothing == 'rolling':
                     try:
                         window = max(1, int(float(str(raw_window).replace(",", "."))))
                     except (ValueError, TypeError):
                         window = 21
                     tmp.A = tmp.A.rolling(window=window).mean()
-            rightborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()+20
-            leftborn=GenPanel.raw_spec[i].A[GenPanel.raw_spec[i].wl.between(200,250)].idxmax()
-            segment1 = GenPanel.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
-            segment2 = GenPanel.raw_spec[i].wl.between(nopeak_blue,nopeak_red, inclusive='both')
-            segmentend=GenPanel.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
+            rightborn=app_state.raw_spec[i].A[app_state.raw_spec[i].wl.between(200,250)].idxmax()+20
+            leftborn=app_state.raw_spec[i].A[app_state.raw_spec[i].wl.between(200,250)].idxmax()
+            segment1 = app_state.raw_spec[i].wl.between(leftborn,rightborn, inclusive='both')
+            segment2 = app_state.raw_spec[i].wl.between(nopeak_blue,nopeak_red, inclusive='both')
+            segmentend=app_state.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
             segment=segment1+segment2+segmentend
             #peakless visible segment
             sigmafor3segment=[float(self.field_weighUV.GetValue()),float(self.field_weighpeakless.GetValue()),float(self.field_weighbaseline.GetValue())]
@@ -1718,27 +1764,27 @@ class TabOne(wx.Panel):
             diagdf=pd.DataFrame(data={"x":x,"y":y,"sigma":sigma})
             print(diagdf.to_string())
 
-            if GenPanel.correction == 'rayleigh':
+            if app_state.correction == 'rayleigh':
                 # initialParameters = np.array([1e9,1])
                 para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=fct_baseline(baseline.wl.copy(), *para)
-            elif GenPanel.correction == 'full':
+            elif app_state.correction == 'full':
                 # initialParameters = np.array([-100, 1e10, 11, 1, 6e+09])
                 para, pcov = sp.optimize.curve_fit(f=full_correction, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=full_correction(baseline.wl.copy(), *para)
-            elif GenPanel.correction == 'custom':
+            elif app_state.correction == 'custom':
                 # initialParameters = np.array([1e9,1,4])
                 para, pcov = sp.optimize.curve_fit(f=custom_correction, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=custom_correction(baseline.wl.copy(), *para)
-            elif GenPanel.correction == 'straight':
+            elif app_state.correction == 'straight':
                 # initialParameters = np.array([-9.98277459e-04, 4.47299554e+09, 4.0e+04 ,  1.79112630e+00])
                 para, pcov = sp.optimize.curve_fit(f=straightforward_solution, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=straightforward_solution(baseline.wl.copy(), *para)
-            elif GenPanel.correction == 'lin_rayleigh':
+            elif app_state.correction == 'lin_rayleigh':
                 para_lin, pcov = sp.optimize.curve_fit(f=linbase, xdata=forfit.wl[segmentend].copy(), ydata=forfit.A[segmentend].copy(), sigma=len(forfit.A[segmentend]))
                 forfit.A=forfit.A-linbase(forfit.wl.copy(), *para_lin)
                 para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
@@ -1755,17 +1801,17 @@ class TabOne(wx.Panel):
                 else:
                     corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
 
-            GenPanel.ready_spec[i]=corrected
+            app_state.ready_spec[i]=corrected
             # tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
             diagplots={}
             if not self.GetParent().GetParent().tab1.diagplots_checkbox.GetValue() :
                 diagplots['fig' + str(n)], diagplots['ax' + str(n)] = plt.subplots()
                 diagplots['ax' + str(n)].set_title(str(i))
-                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl,GenPanel.raw_spec[i].A)
+                diagplots['ax' + str(n)].plot(app_state.raw_spec[i].wl,app_state.raw_spec[i].A)
                 diagplots['ax' + str(n)].plot(baseline.wl,baseline.A)
-                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment1], GenPanel.raw_spec[i].A[segment1], color = 'lime')
-                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment2], GenPanel.raw_spec[i].A[segment2], color = 'magenta')
-                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson')
+                diagplots['ax' + str(n)].plot(app_state.raw_spec[i].wl[segment1], app_state.raw_spec[i].A[segment1], color = 'lime')
+                diagplots['ax' + str(n)].plot(app_state.raw_spec[i].wl[segment2], app_state.raw_spec[i].A[segment2], color = 'magenta')
+                diagplots['ax' + str(n)].plot(app_state.raw_spec[i].wl[segmentend], app_state.raw_spec[i].A[segmentend], color = 'crimson')
                 diagplots['fig' + str(n)].show()
             n+=1
         self.update_right_panel(self.typecorr)
@@ -1849,50 +1895,50 @@ class TabOne(wx.Panel):
 
 
     def on_diff_spec(self, event):
-        file_chooser = FileChooser(self, "Choose Two Files", 2, list(GenPanel.raw_spec.keys()))
+        file_chooser = FileChooser(self, "Choose Two Files", 2, list(app_state.raw_spec.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
-            GenPanel.diff_selections = file_chooser.check_list_box.GetCheckedStrings()
-            print(GenPanel.diff_selections)
-            # print(GenPanel.list_spec.index)
+            app_state.diff_selections = file_chooser.check_list_box.GetCheckedStrings()
+            print(app_state.diff_selections)
+            # print(app_state.list_spec.index)
             # sorting the selection from late to early
             sele_timecode=[]
-            sele_timecode.append(GenPanel.list_spec.time_code[GenPanel.diff_selections[0]])
-            sele_timecode.append(GenPanel.list_spec.time_code[GenPanel.diff_selections[1]])
+            sele_timecode.append(app_state.list_spec.time_code[app_state.diff_selections[0]])
+            sele_timecode.append(app_state.list_spec.time_code[app_state.diff_selections[1]])
             print(sele_timecode)
-            self.sorted_selections = [x for _, x in sorted(zip(sele_timecode, GenPanel.diff_selections), key=lambda pair: pair[0], reverse=True)]
+            self.sorted_selections = [x for _, x in sorted(zip(sele_timecode, app_state.diff_selections), key=lambda pair: pair[0], reverse=True)]
             print(self.sorted_selections)
 
             print(self.typecorr)
             #add if statements to handle the diff spectra for all
         spec_dict = _get_spec_dict(self.typecorr)
         if spec_dict is not None:
-            GenPanel.diffspec.wl = spec_dict[self.sorted_selections[0]].wl
-            GenPanel.diffspec.index = GenPanel.diffspec.wl
-            GenPanel.diffspec.A = (
+            app_state.diffspec.wl = spec_dict[self.sorted_selections[0]].wl
+            app_state.diffspec.index = app_state.diffspec.wl
+            app_state.diffspec.A = (
                 spec_dict[self.sorted_selections[0]].A
                 - spec_dict[self.sorted_selections[1]].A
             )
         self.update_right_panel('diff')
 
     def on_drop_spec(self, event): #htis should open a Filechooser dialog and remove the
-        file_chooser = FileChooser(self, "Choose one or more files to drop", None, list(GenPanel.raw_spec.keys()))
+        file_chooser = FileChooser(self, "Choose one or more files to drop", None, list(app_state.raw_spec.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             selections = file_chooser.check_list_box.GetCheckedStrings()
             for i in selections:
-#                if len(GenPanel.const_spec.keys()) == len(GenPanel.raw_spec.keys()):
+#                if len(app_state.const_spec.keys()) == len(app_state.raw_spec.keys()):
                 try:
-                    del GenPanel.const_spec[i]
+                    del app_state.const_spec[i]
                     print(f"deleting file(s) {i} from const")
-#                elif len(GenPanel.ready_spec.keys()) == len(GenPanel.raw_spec.keys()):
+#                elif len(app_state.ready_spec.keys()) == len(app_state.raw_spec.keys()):
                 except KeyError:
                     print(i + 'was not deleted from const_spec as it has never been constant corrected')
                 try:
-                    del GenPanel.ready_spec[i]
+                    del app_state.ready_spec[i]
                     print(f"deleting file(s) {i} from ready")
                 except KeyError:
                     print(i + 'was not deleted from ready_spec as it has never been scattering corrected')
-                del GenPanel.raw_spec[i]
-                GenPanel.list_spec.drop(labels=i, inplace=True)   #[list(GenPanel.list_spec.file_name == i)]
+                del app_state.raw_spec[i]
+                app_state.list_spec.drop(labels=i, inplace=True)   #[list(app_state.list_spec.file_name == i)]
                 print(f"deleting files(s) {i} from raw")
 
  #this needs to be update panel with the LeftPanel.typercor variable
@@ -1910,17 +1956,17 @@ class TabOne(wx.Panel):
         dialog.Destroy()
 
         file_dir, file_name = _save_all_spectra(totalpath)
-        print("Figure saved at: " + file_dir + file_name + '.png')
+        print("Figure saved at: " + file_dir + file_name[:-4] + '.png')
 
-        # Diff spectrum (if one has been computed). GenPanel.diffspec always
-        # exists as a class attribute (initialized as an empty DataFrame) so
-        # checking hasattr isn't sufficient — fall through cleanly if there
-        # are no diff_selections set.
-        if hasattr(GenPanel, 'diff_selections'):
-            diffpath = ('diff_' + GenPanel.diff_selections[0]
-                        + '-' + GenPanel.diff_selections[1] + '.csv')
-            GenPanel.diffspec.to_csv(diffpath)
-            print('difference spectrum saved to: ' + diffpath)
+        # Diff spectrum (if one has been computed). app_state.diffspec
+        # always exists (initialized empty), but diff_selections starts as
+        # None and is only set after the user picks two files; use that as
+        # the guard.
+        if app_state.diff_selections is not None:
+            diffpath = ('diff_' + app_state.diff_selections[0]
+                        + '-' + app_state.diff_selections[1] + '.csv')
+            app_state.diffspec.to_csv(file_dir + diffpath,index=False)
+            print('difference spectrum saved to: ' + file_dir + diffpath)
 
     def update_right_panel(self, typecorr):
         _refresh_right_panel(self, typecorr)
@@ -2149,11 +2195,11 @@ class TabTwo(wx.Panel):
         typecorr = self.GetParent().GetParent().tab1.typecorr
         spec_dict = _get_spec_dict(typecorr)
         if spec_dict is not None:
-            for i in GenPanel.list_spec.index:
-                GenPanel.list_spec.loc[i, 'Abs'] = spec_dict[i].loc[
+            for i in app_state.list_spec.index:
+                app_state.list_spec.loc[i, 'Abs'] = spec_dict[i].loc[
                     min(spec_dict[i]['wl'], key=lambda x: abs(x - wavelength)), 'A'
                 ]
-        print(GenPanel.list_spec)
+        print(app_state.list_spec)
         self.update_right_panel('time-trace')
 
     def on_kinetic_fit(self,event):
@@ -2168,8 +2214,8 @@ class TabTwo(wx.Panel):
 
         # print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
-        x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that
-        y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
+        x=(np.array(app_state.list_spec.time_code[app_state.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that
+        y=np.array(app_state.list_spec.Abs[app_state.list_spec.time_code.between(startfit,endfit)])
         # print(x,y)
         #TODO decide whether we should add initial parameters to the fit or not.
 
@@ -2231,10 +2277,10 @@ class TabTwo(wx.Panel):
         spec_dict = _get_spec_dict(typecorr)
         if spec_dict is None:
             return
-        ref_name = list(GenPanel.list_spec.file_name)[0]
-        for spec in list(GenPanel.list_spec.file_name)[1:]:  # sorted by time
-            GenPanel.diffserie[spec] = spec_dict[spec].copy()
-            GenPanel.diffserie[spec].A = spec_dict[spec].A - spec_dict[ref_name].A
+        ref_name = list(app_state.list_spec.file_name)[0]
+        for spec in list(app_state.list_spec.file_name)[1:]:  # sorted by time
+            app_state.diffserie[spec] = spec_dict[spec].copy()
+            app_state.diffserie[spec].A = spec_dict[spec].A - spec_dict[ref_name].A
         self.update_right_panel('diffserie')
     def on_2D_plot(self, event):
         if self.GetParent().GetParent().tab1.typecorr == 'const' :
@@ -2243,15 +2289,15 @@ class TabTwo(wx.Panel):
             start = int(self.field_kinetic_start.GetValue())
             endfit = int(self.field_kinetic_end.GetValue())
             print(start,endfit)
-            print(list(GenPanel.list_spec.file_name)[1:][start:endfit])
-            for spec in list(GenPanel.list_spec.file_name)[1:][start:endfit]:
-                # test.append(np.array(GenPanel.diffserie[spec]))
-                test.append(np.array(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(280,700)]))
-            GenPanel.Z=np.transpose(np.array(test))
+            print(list(app_state.list_spec.file_name)[1:][start:endfit])
+            for spec in list(app_state.list_spec.file_name)[1:][start:endfit]:
+                # test.append(np.array(app_state.diffserie[spec]))
+                test.append(np.array(app_state.const_spec[spec].A[app_state.const_spec[spec].wl.between(280,700)]))
+            app_state.Z=np.transpose(np.array(test))
 
             # fig, ax = plt.subplots()
 
-            plt.imshow(GenPanel.Z,
+            plt.imshow(app_state.Z,
                        aspect='auto',
                        cmap='rainbow',
                        origin='lower',
@@ -2272,27 +2318,27 @@ class TabTwo(wx.Panel):
             pal='Spectral_r'
         else:
             pal='Spectral'
-        # if GenPanel.list_spec.laser_blue.isnull().all():
+        # if app_state.list_spec.laser_blue.isnull().all():
             # tokeep_dark =
-        # if ~all([x == None for x in GenPanel.list_spec.laser_dent_blue]) :
-        laser_blue=GenPanel.list_spec.laser_dent_blue.min()
-        laser_red=GenPanel.list_spec.laser_dent_red.max()
+        # if ~all([x == None for x in app_state.list_spec.laser_dent_blue]) :
+        laser_blue=app_state.list_spec.laser_dent_blue.min()
+        laser_red=app_state.list_spec.laser_dent_red.max()
 
         # print(laser_blue, laser_red)
         # print (laser_blue == None, laser_red == None)
         #BUG to SVD here : the tokeep is failing when None and m becomes 0
-        tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl[GenPanel.raw_spec[list(GenPanel.list_spec.file_name)[0]].wl.between(300,800)]]
+        tokeep_dark=[np.isnan(laser_blue)  or np.isnan(laser_red)  or x<laser_blue or x>laser_red for x in app_state.raw_spec[list(app_state.list_spec.file_name)[0]].wl[app_state.raw_spec[list(app_state.list_spec.file_name)[0]].wl.between(300,800)]]
         # print(tokeep_dark)
         typecorr = self.GetParent().GetParent().tab1.typecorr
         spec_dict = _get_spec_dict(typecorr)
         if spec_dict is None:
             return
-        ref_name = list(GenPanel.list_spec.file_name)[0]
+        ref_name = list(app_state.list_spec.file_name)[0]
         n = len(spec_dict) - 1
         m = len(spec_dict[ref_name].wl[spec_dict[ref_name].wl.between(300, 800)][tokeep_dark])
         print(n, m)
         A = np.zeros((m, n), dtype=np.float32)
-        for i, spec in enumerate(list(GenPanel.list_spec.file_name)[1:]):  # sorted by time
+        for i, spec in enumerate(list(app_state.list_spec.file_name)[1:]):  # sorted by time
             tokeep = [np.isnan(laser_blue) or np.isnan(laser_red) or x < laser_blue or x > laser_red
                       for x in spec_dict[spec].wl[spec_dict[spec].wl.between(300, 800)]]
             A[:, i] = (
@@ -2305,7 +2351,7 @@ class TabTwo(wx.Panel):
         # print(VT)
         sigmatrix=np.array(np.zeros(shape=(m,n)),dtype=np.float32)
         # nSV=['SV' + str(i) for i in range(n+1)]
-        # rSV={'time':list(GenPanel.list_spec.index)}
+        # rSV={'time':list(app_state.list_spec.index)}
 
         for i in range(0,len(S)):
             print(i,S[i])
@@ -2317,8 +2363,8 @@ class TabTwo(wx.Panel):
         print(self.scaled_time_factors)
         print(self.scaled_spec_lSV)
 
-        # print(GenPanel.list_spec.time_code[1:])
-        # print(GenPanel.list_spec.time_code[1:])
+        # print(app_state.list_spec.time_code[1:])
+        # print(app_state.list_spec.time_code[1:])
         # print(self.scaled_time_factors)
         # fig, ax = plt.subplots()
         # self.plot_panel.set_xlabel('time-point (µs, in log scale)', fontsize=35)
@@ -2334,7 +2380,7 @@ class TabTwo(wx.Panel):
         palette=sns.color_palette(palette=pal, n_colors=min(5,len(self.scaled_time_factors)))
 
         for i in range(0,min(5,len(self.scaled_time_factors))):
-            wi.plot(dose*np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]),
+            wi.plot(dose*np.array(app_state.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]),
                     marker='o',
                     linewidth=0,
                     style = 'line',
@@ -2360,34 +2406,36 @@ class TabTwo(wx.Panel):
         file_path, file_name = _save_all_spectra(totalpath)
 
         wavelength = str(self.GetParent().GetParent().tab2.field_timetrace.GetValue())
-        GenPanel.list_spec.to_csv(
+        app_state.list_spec.to_csv(
             file_path + 'time-trace_' + wavelength + '_nm.csv', index=True
         )
         if hasattr(self, 'scaled_spec_lSV') and len(self.scaled_spec_lSV) > 0:
             # Build rSV (right singular vectors: time dimension) and lSV (left
             # singular vectors: spectral dimension) DataFrames and save them.
-            n = len(GenPanel.raw_spec) - 1
-            laser_blue = GenPanel.list_spec.laser_dent_blue.min()
-            laser_red = GenPanel.list_spec.laser_dent_red.max()
-            ref_name = list(GenPanel.list_spec.file_name)[0]
-            ref_df = GenPanel.raw_spec[ref_name]
-            mask = ref_df.wl.between(280, 800)
+            n = len(app_state.raw_spec) - 1
+            laser_blue = app_state.list_spec.laser_dent_blue.min()
+            laser_red = app_state.list_spec.laser_dent_red.max()
+            ref_name = list(app_state.list_spec.file_name)[0]
+            ref_df = app_state.raw_spec[ref_name]
+            mask = ref_df.wl.between(300, 800)
             tokeep_dark = [
                 np.isnan(laser_blue) or np.isnan(laser_red) or x < laser_blue or x > laser_red
                 for x in ref_df.wl[mask]
             ]
 
             self.rSV = pd.DataFrame(
-                index=GenPanel.list_spec.time_code[1:],
+                index=app_state.list_spec.time_code[1:],
                 columns=['SV' + str(i) for i in range(n + 1)],
             )
             self.lSV = pd.DataFrame(
-                index=ref_df.wl[mask][tokeep_dark],
+                index=ref_df.wl[mask],#[tokeep_dark],
                 columns=['SV' + str(i) for i in range(n + 1)],
             )
             for i in range(0, n):
+                print(len(mask),len(self.lSV['SV' + str(i)]))
                 self.rSV['SV' + str(i)] = self.scaled_time_factors[i]
                 self.lSV['SV' + str(i)] = self.scaled_spec_lSV[:, i]
+                # print(len(mask),len(self.lSV['SV' + str(i)]))
             self.rSV.to_csv(file_path + 'time-SV.csv', index=True)
             self.lSV.to_csv(file_path + 'spec-SV.csv', index=True)
             print(f'saving the SVD results to {file_path}')
@@ -2469,11 +2517,11 @@ class TabThree(wx.Panel):
 
     def OnStavitskiGolay(self, event):
         print("Stavitski-Golay selected")
-        GenPanel.smoothing = 'savgol'
+        app_state.smoothing = 'savgol'
 
     def OnRollingAverage(self, event):
         print("Rolling-Average selected")
-        GenPanel.smoothing = 'rolling'
+        app_state.smoothing = 'rolling'
 
 
     def OnContextMenu_correction(self, event):
@@ -2502,38 +2550,38 @@ class TabThree(wx.Panel):
 
     def OnRayleigh(self, event):
         print("Only rayleigh correction has been selected")
-        GenPanel.correction = 'rayleigh'
+        app_state.correction = 'rayleigh'
 
     def OnFullCorr(self, event):
         print("Rolling-Average selected")
-        GenPanel.correction = 'full'
+        app_state.correction = 'full'
 
     def OnCustomCorr(self, event):
         print("1/λ^n selected")
-        GenPanel.correction = 'custom'
+        app_state.correction = 'custom'
 
     def OnStraight(self, event):
         print('tinker correction has been chosen')
-        GenPanel.correction='straight'
+        app_state.correction='straight'
 
     def OnLinRay(self, event):
-        GenPanel.correction='lin_rayleigh'
+        app_state.correction='lin_rayleigh'
         print("linear + rayleigh correction has been chosen")
 
     def On_qual(self, event):
-        file_chooser = FileChooser(self, "Choose a File", 1, list(GenPanel.raw_lamp.keys()))
+        file_chooser = FileChooser(self, "Choose a File", 1, list(app_state.raw_lamp.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             self.selection = file_chooser.check_list_box.GetCheckedStrings()[0]
-            GenPanel.raw_lamp[self.selection].quality = GenPanel.raw_lamp[self.selection].I0/GenPanel.raw_lamp[self.selection].I0.max()
+            app_state.raw_lamp[self.selection].quality = app_state.raw_lamp[self.selection].I0/app_state.raw_lamp[self.selection].I0.max()
             self.update_right_panel('quality_plot')
     def update_right_panel(self, typecorr):
         _refresh_right_panel(self, typecorr)
     def OnLaserRemove(self, event):
 
             peak_position_first=0
-            for spec in list(GenPanel.list_spec.file_name)[1:]:
+            for spec in list(app_state.list_spec.file_name)[1:]:
                 # identifying the laser peak
-                lasered_data = signal.savgol_filter(np.array(GenPanel.raw_spec[spec].A[GenPanel.raw_spec[spec].wl.between(350,800)]),
+                lasered_data = signal.savgol_filter(np.array(app_state.raw_spec[spec].A[app_state.raw_spec[spec].wl.between(350,800)]),
                                                        window_length=23,
                                                        polyorder=3)
                 peaks, _ = signal.find_peaks(-lasered_data)
@@ -2549,13 +2597,13 @@ class TabThree(wx.Panel):
                     vars()['ax' + spec].scatter(np.array([peak_left, peak_position, peak_right]), lasered_data[np.array([peak_left, peak_position, peak_right])], color = 'green')
                     vars()['fig' + spec].show()
                     peak_position_first=peak_position
-                    wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
-                    laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
-                    laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
-                    print('in ' + spec + ' Laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))
-                    GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
-                    GenPanel.list_spec.laser_dent_blue[spec]=laser_blue-5
-                    GenPanel.list_spec.laser_dent_red[spec]=laser_red+5
+                    wavelength_laser = app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
+                    laser_blue = app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
+                    laser_red = app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
+                    print('in ' + spec + ' Laser dent found at '+ str(app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))
+                    app_state.raw_spec[spec]=app_state.raw_spec[spec][~ app_state.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
+                    app_state.list_spec.laser_dent_blue[spec]=laser_blue-5
+                    app_state.list_spec.laser_dent_red[spec]=laser_red+5
                 else:
                     closepeaks=[x > peak_position_first - 10 and x < peak_position_first + 10 for x in peaks]
                     if np.array(closepeaks).any():
@@ -2570,16 +2618,16 @@ class TabThree(wx.Panel):
                         vars()['ax' + spec].scatter(np.array([peak_left, peak_position, peak_right]), lasered_data[np.array([peak_left, peak_position, peak_right])], color = 'green')
                         vars()['fig' + spec].show()
                         peak_position_first=peak_position
-                        wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
-                        laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
-                        laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
-                        print('in ' + spec + ' laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))
-                        GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
-                        GenPanel.list_spec.laser_dent_blue[spec]=laser_blue-5
-                        GenPanel.list_spec.laser_dent_red[spec]=laser_red+5
+                        wavelength_laser = app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
+                        laser_blue = app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
+                        laser_red = app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
+                        print('in ' + spec + ' laser dent found at '+ str(app_state.raw_spec[spec].wl[app_state.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))
+                        app_state.raw_spec[spec]=app_state.raw_spec[spec][~ app_state.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
+                        app_state.list_spec.laser_dent_blue[spec]=laser_blue-5
+                        app_state.list_spec.laser_dent_red[spec]=laser_red+5
                     else:
                         print('in ' + spec + ' no laser dent found')
-            print(GenPanel.list_spec[['laser_dent_blue','laser_dent_red']])
+            print(app_state.list_spec[['laser_dent_blue','laser_dent_red']])
 
 
 # Suppress GTK warning
