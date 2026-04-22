@@ -139,7 +139,6 @@ def fct_monoexp(x, a, b, tau):
     return a + b*np.exp(-x/tau)
 
 
-
 def fct_Hill(x, ini, maximum, Km, rate):
     """
     Hill equation function.
@@ -169,7 +168,6 @@ def custom_correction(x, a, b, n):
     return a/np.power(x,n)+b
 
 
-
 def fct_baseline(x, a, b):
     """
     A function that takes x values, a, and b and returns the value of a/x^4+b
@@ -192,7 +190,6 @@ def linbase(x,a,b):
     numpy array: The values of the function evaluated at the given x values
     """
     return a*x+b
-
 
 
 def parse_float(s):
@@ -305,32 +302,6 @@ def Absorbance_multiscan(tmp): #TODO
     return raw_spec
 
 
-floatize=np.vectorize(float)   
-
-
-def longest_digit_sequence(input_string):
-    """
-    Find the longest digit sequence in a given string.
-
-    Parameters:
-    input_string (str): The input string to search for digit sequences.
-
-    Returns:
-    str: The longest digit sequence found in the input string.
-
-    This function uses regular expression to find all digit sequences in the input string.
-    It then identifies the longest digit sequence using the max function with the 'key' parameter set to len.
-    If no digit sequences are found, it returns None.
-    """
-    # Use regular expression to find all digit sequences in the string
-    digit_sequences = re.findall(r'\d+', input_string)
-    
-    # Find the longest digit sequence
-    longest_sequence = max(digit_sequences, key=len, default=None)
-    
-    return longest_sequence
-
-
 def extract_time_code(name):
     """
     Extract a time-code / ordering integer from a spectrum's base name.
@@ -347,7 +318,7 @@ def extract_time_code(name):
     """
     if 'dark' in name:
         return 1
-    
+
     for pattern, trim in (
         (r'\d+us', slice(0, -2)),   # strip trailing 'us'
         (r'pH\d+', slice(2, None)), # strip leading 'pH'
@@ -370,17 +341,13 @@ def extract_time_code(name):
     return 0
 
 
-
-
-
-
 def guess_separator(line):
     # Define potential separators
     if ';  ' in line :
         guessed_separator = ';'
         guessed_decimal = ','
         return guessed_separator, guessed_decimal
-        
+
     elif ',' in line and not '.' in line:
         separators = ['\t', ';', ' '] # for french formats with comma as decimals
         guessed_decimal=','
@@ -389,9 +356,9 @@ def guess_separator(line):
         guessed_decimal='.'
     max_separators = 0
     guessed_separator = None
-    
+
     # Iterate through separators and count occurrences
-    
+
     for sep in separators:
         count = line.count(sep)
         if count > max_separators:
@@ -412,7 +379,7 @@ def universal_opener(file_path):
         except UnicodeDecodeError:
             print(f"Failed with {encoding_for_file}, trying next...")
             continue
-    
+
     if 'JASCO' in content:
         print('JASCO spectrum')
         with open(file_path, 'r', encoding=encoding_for_file) as infile:
@@ -423,27 +390,27 @@ def universal_opener(file_path):
                     delimiter_list.append(separator)
                     decimal_list.append(dec)
                 linecounter+=1
-        
+
     else:
         with open(file_path, 'r', encoding=encoding_for_file) as infile:
             for line in infile:
-            
+
                 separator, dec = guess_separator(line)
             # print(separator)
                 delimiter_list.append(separator)
                 decimal_list.append(dec)
             # print(separator)
-    
-    
+
+
     counter = Counter(delimiter_list)
     most_common = counter.most_common(1)
     delimiter=most_common[0][0]
-    
+
     counter = Counter(decimal_list)
     most_common = counter.most_common(1)
     decimal=most_common[0][0]
-    
-    
+
+
     # Temporary file to store filtered lines
     temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
 
@@ -456,7 +423,7 @@ def universal_opener(file_path):
     temp_file.close()
 
     # Read the temporary file using pandas
-    df = pd.read_csv(temp_file.name, 
+    df = pd.read_csv(temp_file.name,
                      delimiter=delimiter,
                      decimal=decimal,
                      names=['wl','A'],
@@ -475,7 +442,7 @@ def multiscan_opener(file_path):
         raw_spec={}
         tmpstamp=[]
         for i in tmp_spec.columns:
-            
+
             if i!='wl':
                 print(i)
                 raw_spec[i]=tmp_spec.filter(items=['wl',i])
@@ -486,7 +453,6 @@ def multiscan_opener(file_path):
                 if 'dark' in i :
                     tmpstamp.append(1)
                 elif re.search(r'__\d+__', i):
-                    print('THERE WE GO')
                     tmpstamp.append(int(re.search(r'__\d+__', i)[0].replace('_','')))
                 else :
                     # tmpstamps.append(int(max(re.findall(r'\d+us', i), key = len)[0:-2])#longest_digit_sequence(file_name)
@@ -504,7 +470,7 @@ def multiscan_opener(file_path):
             content=infile.read()
             if 'Measurement mode: Scope' in content and '1204051U1' in content:
                 print('CALAIDOSCOPE scope spectrum')
-                
+
                 # tmpstamp=tmpstamp.iloc[:,3:]
                 # np.array(tmpstamp[0])
                 delimiter_list=[]
@@ -520,11 +486,11 @@ def multiscan_opener(file_path):
                 counter = Counter(delimiter_list)
                 most_common = counter.most_common(1)
                 delimiter=most_common[0][0]
-                
+
                 counter = Counter(decimal_list)
                 most_common = counter.most_common(1)
                 decimal=most_common[0][0]
-                
+
                 temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
 
                 with open(file_path, 'r') as file:
@@ -533,18 +499,17 @@ def multiscan_opener(file_path):
                         cter=0
                         nodigit=0
                         for i in line[0:10]:
-                            if i.isdigit() or i == delimiter or i == decimal: 
+                            if i.isdigit() or i == delimiter or i == decimal:
                                 cter+=1
                             else:
                                 nodigit+=1
                         if cter > nodigit:
                                 temp_file.write(line)
-                
+
                 temp_file.close()
 
-                
-                
-                raw_scan = pd.read_csv(temp_file.name, 
+
+                raw_scan = pd.read_csv(temp_file.name,
                                  delimiter=delimiter,
                                  decimal=decimal,
                                  # names=['wl','A'],
@@ -554,8 +519,8 @@ def multiscan_opener(file_path):
                 raw_scan.index = raw_scan.wl
                 timestamps=pd.read_csv(file_path, header=None, sep=';', skiprows=9, nrows=1, names=raw_scan.columns)
                 return Absorbance_multiscan(raw_scan), timestamps
-            else: 
-                print('Custom ?') #TODO add a tickbox for whether the data is counts or absorbance 
+            else:
+                print('Custom ?') #TODO add a tickbox for whether the data is counts or absorbance
                 delimiter_list=[]
                 decimal_list=[]
                 with open(file_path, 'r') as infile:
@@ -569,7 +534,7 @@ def multiscan_opener(file_path):
                 counter = Counter(delimiter_list)
                 most_common = counter.most_common(1)
                 delimiter=most_common[0][0]
-                
+
                 counter = Counter(decimal_list)
                 most_common = counter.most_common(1)
                 decimal=most_common[0][0]
@@ -580,18 +545,17 @@ def multiscan_opener(file_path):
                         cter=0
                         nodigit=0
                         for i in line[0:10]:
-                            if i.isdigit() or i == delimiter or i == decimal: 
+                            if i.isdigit() or i == delimiter or i == decimal:
                                 cter+=1
                             else:
                                 nodigit+=1
                         if cter > nodigit:
                                 temp_file.write(line)
-                
+
                 temp_file.close()
 
-                
-                
-                raw_abs = pd.read_csv(temp_file.name, 
+
+                raw_abs = pd.read_csv(temp_file.name,
                                  delimiter=delimiter,
                                  decimal=decimal,
                                  # names=['wl','A'],
@@ -725,29 +689,29 @@ class GenPanel(wx.Panel):
     list_spec.index = list_spec.file_name
     smoothing='savgol'
     correction='full'
-    
+
 class MainFrame(wx.Frame):
     def __init__(self):
         wx.Frame.__init__(self, None, title="icOS toolbox", size=(1000, 800))
-        
+
         # Create splitter
         self.splitter = wx.SplitterWindow(self)
-        
+
         # Create left panel with notebook
         self.splitter.left_panel = LeftPanel(self.splitter)
-        
+
         # Create right panel
         self.splitter.right_panel = RightPanel(self.splitter)
-        
+
         # Add panels to splitter
         self.splitter.SplitVertically(self.splitter.left_panel, self.splitter.right_panel, 450)
         self.splitter.SetSashGravity(0.5)
-        
+
         # Set main sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.splitter, 1, wx.EXPAND)
         self.SetSizer(sizer)
-        
+
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.Show()
     def on_close(self, event):
@@ -757,7 +721,7 @@ class MainFrame(wx.Frame):
 class Modified_plot_panel(PlotPanel):
     def __init__(self, parent):
         PlotPanel.__init__(self, parent, dpi=150, fontsize=3,size=(700, 700))
-    
+
     def plot_many_modified(self, datalist, side='left', title=None,palin='Spectral',
                   xlabel=None, ylabel=None, show_legend=False, zoom_limits=None, **kws):
         """
@@ -776,7 +740,7 @@ class Modified_plot_panel(PlotPanel):
                 ydata = tdat[1]
             return (xdata, ydata, out)
 
-        
+
         conf = self.conf
         opts = dict(side=side, title=title, xlabel=xlabel, ylabel=ylabel,
                     delay_draw=True, show_legend=False)
@@ -806,11 +770,9 @@ class Modified_plot_panel(PlotPanel):
         conf.relabel(delay_draw=True)
         self.draw()
         # self.canvas.Refresh()
-        
-        
-        
-        
-    def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [AU]', 
+
+
+    def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [AU]',
                      I0=None, side='left', zoom_limits=None, show_legend=False, **kws):
         """
         plot many traces at once, taking a list of (x, y) pairs
@@ -835,7 +797,7 @@ class Modified_plot_panel(PlotPanel):
         opts.update(kws)
         # x0, y0 = datalist[0][0], datalist[0][1]
         x0, y0, opts = unpack_tracedata(datalist[0])#, **opts)
-        
+
         nplot_traces = len(conf.traces)
         nplot_request = len(datalist)
         if nplot_request > nplot_traces:
@@ -844,7 +806,7 @@ class Modified_plot_panel(PlotPanel):
             for i in range(nplot_traces, nplot_request+5):
                 conf.init_trace(i,  linecolors[i%ncols], 'dashed')
         # palette = [rgb_to_hex(x) for x in sns.color_palette(palette='Spectral', n_colors=len(datalist))]
-        
+
         colors = [[1.0, 0.8, 0.4], [0.4, 1.0, 0.4] ]  # Red to Green
         cmap = LinearSegmentedColormap.from_list("Custom", colors, N=len(I0))
 
@@ -875,7 +837,6 @@ class Modified_plot_panel(PlotPanel):
         self.draw()
         # self.canvas.Refresh()
 
-        
 
 class RightPanel(GenPanel):
     def __init__(self, parent):
@@ -884,7 +845,7 @@ class RightPanel(GenPanel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.plot_panel, proportion = 1, flag = wx.EXPAND)
         self.SetSizer(sizer)
-        
+
 #TODO change the plotting option to add a way to change the plot function to plot-many when there are more than 100 curves
     # --- small helpers -----------------------------------------------------
 
@@ -1178,16 +1139,13 @@ class RightPanel(GenPanel):
         )
 
 
-
-
-
 class LeftPanel(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent)
-        
+
         # Create notebook
         self.notebook = wx.Notebook(self)
-        
+
         # Create tAbs
         self.tab1 = TabOne(self.notebook)
         self.tab2 = TabTwo(self.notebook)
@@ -1204,30 +1162,24 @@ class LeftPanel(wx.Panel):
 class TabOne(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent, style = wx.SUNKEN_BORDER)
-        
-        # Add previous content of LeftPanel here
-        # Example:
-# class LeftPanel(GenPanel):
-    
-    # def __init__(self, parent):
-        # wx.Panel.__init__(self, parent, style = wx.SUNKEN_BORDER)
+
         self.button_openfile = wx.Button(self, label="Open File")
         self.button_openfile.Bind(wx.EVT_BUTTON, self.on_open_file)
-        
+
         # checkbox for TR-icOS data
         #TODO change that to be a rollout menu that can iterate between icOS ; TRicOS and Fluo with a third option being 'user supplied'
         self.bigsizer_checkboxes = wx.BoxSizer(wx.VERTICAL)
-        self.sizer_checkboxes = wx.BoxSizer(wx.HORIZONTAL)        
+        self.sizer_checkboxes = wx.BoxSizer(wx.HORIZONTAL)
         self.TRicOS_checkbox = wx.CheckBox(self, label = 'TR-icOS data ?', style = wx.CHK_2STATE)
         # self.FLUO_checkbox = wx.CheckBox(self, label = 'Fluorescence data ?', style = wx.CHK_2STATE)
         # self.titlegend_checkbox = wx.CheckBox(self, label = 'Toggle off title/legend')
         self.sizer_checkboxes.Add(self.TRicOS_checkbox, flag=wx.ALL, border=3)
         # self.sizer_checkboxes.Add(self.FLUO_checkbox, flag=wx.ALL, border=3)
         #self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
-        
+
         # checkbox for Multi read files (such as that of the cailaidoscope)
         #TODO change that to be a rollout menu that can iterate between icOS ; TRicOS and Fluo with a third option being 'user supplied'
-     
+
         self.Multiscan_checkbox = wx.CheckBox(self, label = 'Multi scan file ?', style = wx.CHK_2STATE)
         # self.FLUO_checkbox = wx.CheckBox(self, label = 'Fluorescence data ?', style = wx.CHK_2STATE)
         # self.titlegend_checkbox = wx.CheckBox(self, label = 'Toggle off title/legend')
@@ -1236,10 +1188,10 @@ class TabOne(wx.Panel):
         #self.sizer_checkboxes.Add(self.titlegend_checkbox, flag=wx.ALL, border=3)
         self.averaging_checkbox = wx.CheckBox(self, label= 'averaging', style = wx.CHK_2STATE)
         self.sizer_checkboxes.Add(self.averaging_checkbox, flag=wx.ALL, border=3)
-        
+
         self.bigsizer_checkboxes.Add(self.sizer_checkboxes, 1, wx.ALIGN_CENTER)
-        
-        self.sizer_checkboxes_2 = wx.BoxSizer(wx.HORIZONTAL)    
+
+        self.sizer_checkboxes_2 = wx.BoxSizer(wx.HORIZONTAL)
         # scaling ?
         self.scaling_checkbox = wx.CheckBox(self, label = 'Scaling ?', style = wx.CHK_2STATE)
         # constchecksizer.Add(self.scaling_checkbox, wx.ALIGN_CENTER | wx.ALL)# border = 2)
@@ -1249,148 +1201,147 @@ class TabOne(wx.Panel):
         self.sizer_checkboxes_2.Add(self.scaling_checkbox, flag=wx.ALL, border=3)
         self.sizer_checkboxes_2.Add(self.smoothing_checkbox, flag=wx.ALL, border=3)
         self.bigsizer_checkboxes.Add(self.sizer_checkboxes_2, 1, wx.ALIGN_CENTER)
-        
-        
-        
+
+
         # print raw data again
         self.button_rawdat = wx.Button(self, label="Back to raw data")
         self.button_rawdat.Bind(wx.EVT_BUTTON, self.backtoraw)
-        # constant baseline correction 
+        # constant baseline correction
         self.StaticBox_const = wx.StaticBox(self, label = "Constant Baseline")
         constboxsizer = wx.StaticBoxSizer(self.StaticBox_const, wx.VERTICAL)
-        
+
         topeaksizer=wx.BoxSizer(wx.VERTICAL)
         self.label_topeak = wx.StaticText(self, label="wl of the peak of interest", style = wx.ALIGN_CENTER_HORIZONTAL)
         topeaksizer.Add(self.label_topeak, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)#, border = 2)
         self.field_topeak = wx.TextCtrl(self, style = wx.TE_CENTER , value = '280')
         topeaksizer.Add(self.field_topeak, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)#, border = 2)
-        
+
         bluebasesizer=wx.BoxSizer(wx.VERTICAL)
         self.label_baseline_blue = wx.StaticText(self, label="Baseline blue-side Boundary", style = wx.ALIGN_CENTER_HORIZONTAL)
         bluebasesizer.Add(self.label_baseline_blue, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)#, border = 2)
         self.field_baseline_blue = wx.TextCtrl(self, style = wx.TE_CENTER, value = '600')
         bluebasesizer.Add(self.field_baseline_blue, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)#, border = 2)
-        
+
         redbasesizer=wx.BoxSizer(wx.VERTICAL)
         self.label_baseline_red = wx.StaticText(self, label="Baseline red-side Boundary", style = wx.ALIGN_CENTER_HORIZONTAL)
         redbasesizer.Add(self.label_baseline_red, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)#, border = 2)
         self.field_baseline_red = wx.TextCtrl(self, style = wx.TE_CENTER, value = '800')
         redbasesizer.Add(self.field_baseline_red, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)#, border = 2)
-        
+
         constcorrsizer=wx.BoxSizer(wx.HORIZONTAL)
         constcorrsizer.Add(topeaksizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
         constcorrsizer.Add(bluebasesizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
         constcorrsizer.Add(redbasesizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
-        
+
         self.button_constancorr = wx.Button(self, label="Correct for constant baseline")
         self.button_constancorr.Bind(wx.EVT_BUTTON, self.on_constant_corr)
-        
+
         # constchecksizer=wx.BoxSizer(wx.HORIZONTAL)
         # constboxsizer.Add(self.button_constancorr, wx.EXPAND | wx.ALL)# border = 2)
-       
-        
+
+
         #sizer block
         constboxsizer.Add(constcorrsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
         constboxsizer.Add(self.button_constancorr, 1, wx.EXPAND | wx.ALL, border = 0)
-        
+
         # constboxsizer.Add(constchecksizer, 0, wx.ALIGN_CENTER | wx.ALL, border = 2)
-        
-        
-        #Scattering correction 
+
+
+        #Scattering correction
         self.StaticBox_scat = wx.StaticBox(self, label = "Scattering Baseline")
         scatboxsizer = wx.StaticBoxSizer(self.StaticBox_scat, wx.VERTICAL)
         self.button_scattercor = wx.Button(self, label="Correct for Scattering")
         self.button_scattercor.Bind(wx.EVT_BUTTON, self.on_scat_corr)
-        
+
         bluenopeakizer=wx.BoxSizer(wx.VERTICAL)
         self.label_nopeak_blue = wx.StaticText(self, label="blue-side peakless", style = wx.ALIGN_CENTER_HORIZONTAL)
         bluenopeakizer.Add(self.label_nopeak_blue, 1, wx.ALIGN_CENTER | wx.ALL)
         self.field_nopeak_blue = wx.TextCtrl(self, style = wx.TE_CENTER)
         bluenopeakizer.Add(self.field_nopeak_blue, 1, wx.ALIGN_CENTER | wx.ALL)
 
-        
+
         rednopeakizer=wx.BoxSizer(wx.VERTICAL)
         self.label_nopeak_red = wx.StaticText(self, label="red-side peakless", style = wx.ALIGN_CENTER_HORIZONTAL)
         rednopeakizer.Add(self.label_nopeak_red, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
         self.field_nopeak_red = wx.TextCtrl(self, style = wx.TE_CENTER)
         rednopeakizer.Add(self.field_nopeak_red, 1, wx.ALIGN_CENTER| wx.BOTTOM, border=0)
-        
+
         leewaysizer=wx.BoxSizer(wx.VERTICAL)
         self.label_leeway_factor = wx.StaticText(self, label="expected OD in blue", style = wx.ALIGN_CENTER_HORIZONTAL)
         leewaysizer.Add(self.label_leeway_factor, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
         self.field_leeway_factor = wx.TextCtrl(self, style = wx.TE_CENTER)
         leewaysizer.Add(self.field_leeway_factor, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
-        
+
         # diagnostic plots ?
         self.diagplots_checkbox = wx.CheckBox(self, label = 'no diagnostic plots ?', style = wx.CHK_2STATE)
-        
+
         #divergences
         self.box_div = wx.StaticBox(self, label = 'Segment divergences')
         divboxsizer = wx.StaticBoxSizer(self.box_div, wx.HORIZONTAL)
-        #UV        
+        #UV
         self.labelUV = wx.StaticText(self, label = 'UV', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_weighUV = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
         UVsizer = wx.BoxSizer(wx.VERTICAL)
         UVsizer.Add(self.labelUV, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
         UVsizer.Add(self.field_weighUV, 1, wx.ALIGN_CENTER | wx.TOP, border=3)
         divboxsizer.Add(UVsizer, 1, wx.ALIGN_CENTER, border = 2)
-        
-        #peakless        
+
+        #peakless
         self.labelpeakless = wx.StaticText(self, label = 'peakless', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_weighpeakless = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
         peaklesssizer = wx.BoxSizer(wx.VERTICAL)
         peaklesssizer.Add(self.labelpeakless, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
         peaklesssizer.Add(self.field_weighpeakless, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=3)
         divboxsizer.Add(peaklesssizer, 1, wx.ALIGN_CENTER, border = 2)
-        
-        #baseline        
+
+        #baseline
         self.labelbaseline = wx.StaticText(self, label = 'baseline', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_weighbaseline = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
         baselinesizer = wx.BoxSizer(wx.VERTICAL)
         baselinesizer.Add(self.labelbaseline, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
         baselinesizer.Add(self.field_weighbaseline, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=3)
         divboxsizer.Add(baselinesizer, 1, wx.ALIGN_CENTER, border = 2)
-        
+
         corrscatsizer=wx.BoxSizer(wx.HORIZONTAL)
-        
+
         corrscatsizer.Add(self.button_scattercor, 1, wx.EXPAND | wx.ALL, border = 2)
         corrscatsizer.Add(self.diagplots_checkbox, 1, wx.ALIGN_CENTER)
         scatboxsizer.Add(corrscatsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
-        
+
         fieldscatsizer=wx.BoxSizer(wx.HORIZONTAL)
         fieldscatsizer.Add(bluenopeakizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
         fieldscatsizer.Add(rednopeakizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
         fieldscatsizer.Add(leewaysizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 3)
         scatboxsizer.Add(fieldscatsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 0)
-        
-        
+
+
         # scatboxsizer.AddSpacer(5)
         scatboxsizer.Add(divboxsizer, 1, wx.EXPAND, border = 5)
-        
-                
+
+
         # difference spectra
         self.button_diffspec = wx.Button(self, label = 'calculate difference spectrum')
         self.button_diffspec.Bind(wx.EVT_BUTTON, self.on_diff_spec)
-        
-        
+
+
         # mass center
-        self.mass_center_checkbox = wx.CheckBox(self, label = 'Mass center calculation ?', style = wx.CHK_2STATE)        
-        
+        self.mass_center_checkbox = wx.CheckBox(self, label = 'Mass center calculation ?', style = wx.CHK_2STATE)
+
         # remove a spec
         self.button_drop_spec = wx.Button(self, label='Remove a spectrum')
         self.button_drop_spec.Bind(wx.EVT_BUTTON, self.on_drop_spec)
-        
-        # kinetics 
+
+        # kinetics
         # self.field_timetrace = wx.TextCtrl(self, value = '280', style = wx.TE_CENTER)
         # self.label_timetrace = wx.StaticText(self, label = 'Kinetics', style = wx.ALIGN_CENTER_HORIZONTAL)
-        
+
         # self.button_timetrace = wx.Button(self, label = 'Time-trace')
         # self.button_timetrace.Bind(wx.EVT_BUTTON, self.on_timetrace)
-        
+
         # save
         self.button_save = wx.Button(self, label="Save figure and spectra")
         self.button_save.Bind(wx.EVT_BUTTON, self.on_save)
-        
+
         # Add widgets to the right panel sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.button_openfile, 1, wx.EXPAND | wx.ALL, border = 2)
@@ -1399,20 +1350,20 @@ class TabOne(wx.Panel):
         # self.sizer_checkboxes
         sizer.Add(self.button_rawdat, 1, wx.EXPAND | wx.ALL, border = 2)
         sizer.Add(constboxsizer, 1, wx.EXPAND, border = 2)
-        
+
         sizer.Add(scatboxsizer, 1, wx.EXPAND, border = 5)
         sizer.Add(self.button_diffspec, 1, wx.EXPAND | wx.ALL, border = 2)
         sizer.Add(self.mass_center_checkbox, 1, wx.ALIGN_CENTER)
         sizer.Add(self.button_drop_spec, 1, wx.EXPAND | wx.ALL, border = 2)
         # sizer.Add(self.label_timetrace, 0, wx.ALIGN_CENTER, border = 0)
         # sizer.Add(self.field_timetrace, 0, wx.ALIGN_CENTER | wx.ALL, border = 0)
-          
+
         # sizer.Add(self.button_timetrace, 1, wx.EXPAND | wx.ALL, border = 2)
         sizer.Add(self.button_save, 1, wx.EXPAND | wx.ALL, border = 2)
         self.SetSizer(sizer)
-        # self.SetBackgroundColour('grey') 
-        
-        
+        # self.SetBackgroundColour('grey')
+
+
     def on_open_file(self, event):
         self.typecorr = 'raw'
         if platform.system() == 'Windows' :
@@ -1430,7 +1381,7 @@ class TabOne(wx.Panel):
                 toaverage=[]
                 if dialog.ShowModal() == wx.ID_OK:
                     file_paths = dialog.GetPaths()
-                    
+
                     for file_path in file_paths:
                         pathtospec=''
                         for i in file_path.split(dirsep)[0:-1]:
@@ -1442,7 +1393,7 @@ class TabOne(wx.Panel):
                             name_correct=tmpname.replace(max(re.findall(r'\d+ms', file_path), key = len), max(re.findall(r'\d+ms', file_path), key = len)[0:-2] + '000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
-                        elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
+                        elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname):
                             name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
@@ -1460,7 +1411,7 @@ class TabOne(wx.Panel):
                                       skipfooter=0,
                                       # names=['wl','I','bgd','I0','A'],
                                       engine="python")
-                            
+
                             GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].index
                             isthereAbs=False
                             if len(GenPanel.raw_lamp[file_name].columns) == 5:
@@ -1468,16 +1419,16 @@ class TabOne(wx.Panel):
                                 isthereAbs=True
                             elif len(GenPanel.raw_lamp[file_name].columns) == 4:
                                 GenPanel.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0']
-                            
-                            
+
+
                             GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[file_name].wl
-                            
-                            
+
+
                     # Proper N-way arithmetic mean across all selected spectra.
                     # The previous running-pairwise average ((avg + new)/2) was
                     # biased: for N spectra it weighted later files more heavily.
                     average_signal = GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].copy()
-                    average_signal['wl'] = floatize(average_signal.index)
+                    average_signal['wl'] = average_signal.index.astype(float)
 
                     stack_I = pd.concat(
                         [GenPanel.raw_lamp[name]['I'] for name in toaverage],
@@ -1510,7 +1461,7 @@ class TabOne(wx.Panel):
                 toaverage=[]
                 if dialog.ShowModal() == wx.ID_OK:
                     file_paths = dialog.GetPaths()
-                    
+
                     for file_path in file_paths:
                         pathtospec=''
                         for i in file_path.split(dirsep)[0:-1]:
@@ -1522,12 +1473,12 @@ class TabOne(wx.Panel):
                             name_correct=tmpname.replace(max(re.findall(r'\d+ms', file_path), key = len), max(re.findall(r'\d+ms', file_path), key = len)[0:-2] + '000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
-                        elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
+                        elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname):
                             name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                             os.rename(file_path, pathtospec + name_correct)
                             file_path=pathtospec + name_correct
-                            
-                            
+
+
                         file_name = file_path.split(dirsep)[-1][0:-4]
                         # print(file_name)
                         if file_path[-4:] == '.txt':
@@ -1542,7 +1493,7 @@ class TabOne(wx.Panel):
                                       skipfooter=0,
                                       # names=['wl','I','bgd','I0','A'],
                                       engine="python")
-                            
+
                             GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[list(GenPanel.raw_lamp.keys())[0]].index
                             isthereAbs=False
                             if len(GenPanel.raw_lamp[file_name].columns) == 5:
@@ -1550,8 +1501,8 @@ class TabOne(wx.Panel):
                                 isthereAbs=True
                             elif len(GenPanel.raw_lamp[file_name].columns) == 4:
                                 GenPanel.raw_lamp[file_name].columns=['wl','I', 'bgd', 'I0']
-                            
-                            
+
+
                             GenPanel.raw_lamp[file_name].index=GenPanel.raw_lamp[file_name].wl
                             GenPanel.raw_spec[file_name]=Absorbance(GenPanel.raw_lamp[file_name].copy())
                             # print(f"File '{file_name}' added spectra list with data: {GenPanel.raw_spec[file_name].A}")
@@ -1560,8 +1511,8 @@ class TabOne(wx.Panel):
                             GenPanel.list_spec.loc[file_name,'Abs']=GenPanel.raw_spec[file_name].loc[min(GenPanel.raw_spec[file_name]['wl'], key=lambda x: abs(x - 280)),'A']
                             GenPanel.list_spec.loc[file_name,'laser_dent_blue']=np.nan
                             GenPanel.list_spec.loc[file_name, 'laser_dent_red']=np.nan
-                        
-                    
+
+
                     self.update_right_panel('raw')
                 dialog.Destroy()
         elif self.GetParent().GetParent().tab1.Multiscan_checkbox.GetValue() :
@@ -1574,13 +1525,13 @@ class TabOne(wx.Panel):
                     # for i in file_path.split(dirsep)[0:-1]:
                     #     pathtospec+=i+dirsep
                     # filename_raw = file_path.split(dirsep)[-1]
-                    
-                    
+
+
                     GenPanel.raw_spec, tmpstamps = multiscan_opener(file_path)
-                    
-                    # read the time-stamp for each spectrum 
-                    
-                    
+
+                    # read the time-stamp for each spectrum
+
+
                     for spec in  GenPanel.raw_spec:
                             GenPanel.list_spec.loc[spec,'file_name']=spec
                             # print(int(max(re.findall(r'pH\d+', name_correct), key = len)[2:]))
@@ -1588,12 +1539,12 @@ class TabOne(wx.Panel):
                             GenPanel.list_spec.loc[spec,'laser_dent_blue']=np.nan
                             GenPanel.list_spec.loc[spec, 'laser_dent_red']=np.nan
                             GenPanel.list_spec.loc[spec,'time_code']=tmpstamps[spec]
-                    
+
                     print(f"File '{spec}' added to dictionary with data: {GenPanel.raw_spec[spec].A}")
                 # print(GenPanel.list_spec)
                 self.update_right_panel('raw')
             dialog.Destroy()
-       
+
         else :
             # self.typecorr = 'raw'
             wildcard = "TXT files (*.txt)|*.txt|All files (*.*)|*.*"
@@ -1639,11 +1590,11 @@ class TabOne(wx.Panel):
                              name_correct=tmpname.replace(max(re.findall(r'\d+ms', file_path), key = len), max(re.findall(r'\d+ms', file_path), key = len)[0:-2] + '000us')
                              os.rename(file_path, pathtospec + name_correct)
                              file_path=pathtospec + name_correct
-                         elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname): 
+                         elif re.search(r'\d+s', tmpname) and not re.search(r'\d+ms', tmpname) and not re.search(r'\d+us', tmpname):
                              name_correct=tmpname.replace(max(re.findall(r'\d+s', file_path), key = len), max(re.findall(r'\d+s', file_path), key = len)[0:-1] + '000000us')
                              os.rename(file_path, pathtospec + name_correct)
                              file_path=pathtospec + name_correct
-                         
+
                          name_correct = file_path.split(dirsep)[-1][0:-4]
                          # print(name_correct)
                          if file_path[-4:] == '.txt' or file_path[-4:] == '.asc' or file_path[-4:] == '.csv':
@@ -1655,8 +1606,8 @@ class TabOne(wx.Panel):
                          GenPanel.list_spec.loc[name_correct,'Abs']=GenPanel.raw_spec[name_correct].loc[min(GenPanel.raw_spec[name_correct]['wl'], key=lambda x: abs(x - 280)),'A']
                          GenPanel.list_spec.loc[name_correct,'laser_dent_blue']=np.nan
                          GenPanel.list_spec.loc[name_correct, 'laser_dent_red']=np.nan
-                         
-                         
+
+
                          print(f"File '{name_correct}' added to dictionary with data: {GenPanel.raw_spec[name_correct].A}")
                 # print(GenPanel.list_spec)
                 self.update_right_panel('raw')
@@ -1664,22 +1615,21 @@ class TabOne(wx.Panel):
         GenPanel.list_spec.sort_values(by = ['time_code'], axis=0, ascending=True, inplace=True)
         print(GenPanel.list_spec.time_code)
         # Plot the DataFrame
-        
-        
-        
+
+
     def on_constant_corr(self, event):
         #TODO need to fix the scaling
         self.typecorr = 'const'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
-        if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
+        if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
             scaling_top = float(self.field_topeak.GetValue())
         for i in GenPanel.raw_spec:
             segmentend=GenPanel.raw_spec[i].wl.between(baseline_blue,baseline_red, inclusive='both')
             tmp=GenPanel.raw_spec[i].copy()
             tmp.A-=mean(GenPanel.raw_spec[i].A[segmentend])
             if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
-                if scaling_top == 0 : 
+                if scaling_top == 0 :
                     tmp_scaling_top=float(tmp.A[tmp.wl.between(300,800,inclusive='both')].idxmax())
                     print(tmp_scaling_top)
                     tmp.A*=1/tmp.A[tmp.wl.between(tmp_scaling_top-5,tmp_scaling_top+5,inclusive='both')].mean()
@@ -1704,17 +1654,17 @@ class TabOne(wx.Panel):
             GenPanel.const_spec[i].index=GenPanel.raw_spec[i].wl
             print(f"Spectrum '{i}' corrected: {GenPanel.const_spec[i].A}")
         self.update_right_panel(self.typecorr)
-        
+
     def on_scat_corr(self, event):
         self.typecorr = 'ready'
         baseline_blue = float(self.field_baseline_blue.GetValue())
         baseline_red = float(self.field_baseline_red.GetValue())
         leewayfac= float(self.field_leeway_factor.GetValue())
-        if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
+        if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
             scaling_top = float(self.field_topeak.GetValue())
         nopeak_blue = float(self.field_nopeak_blue.GetValue())
         nopeak_red = float(self.field_nopeak_red.GetValue())
-        
+
         n=0
         # this plots each fitted baseline against the raw data, highlighting the chose segments
         for i in GenPanel.raw_spec :
@@ -1746,29 +1696,15 @@ class TabOne(wx.Panel):
             forfit.index=forfit.wl
             if leewayfac==0:
                 pass
-            elif self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :  
-                print(" ")
-                print(" ")
-                print(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)])
-                print(" ")
-                print(forfit.A[forfit.wl.between(scaling_top-10,scaling_top+10)].max(skipna=True))
-                print(" ")
-                # print(forfit.A[segment2]-leewayfac*forfit.A[scaling_top-10:scaling_top+10].max())
+            elif self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
                 forfit.loc[segment2.values, 'A'] -= leewayfac * float(
                     forfit.A[forfit.wl.between(scaling_top-10, scaling_top+10)].max(skipna=True)
                 )
             else :
-                print(" ")
-                print(" ")
-                print(forfit.A[forfit.wl.between(310,800)])
-                print(" ")
-                print(forfit.A[forfit.wl.between(310,800)].max(skipna=True))
-                print(" ")
-                # print(forfit[segment2]-leewayfac*forfit.A[310:800].max())
                 forfit.loc[segment2.values, 'A'] -= leewayfac * float(
                     forfit.A[forfit.wl.between(310, 800)].max(skipna=True)
                 )
-            
+
             x=forfit.wl[segment].fillna(value=0).copy()
             y=forfit.A[segment].fillna(value=0).copy()
             # print(forfit.A[segment2].to_string())
@@ -1778,10 +1714,10 @@ class TabOne(wx.Panel):
             sigma=sigma + m*[sigmafor3segment[1]]
             m=len(forfit.A[segment1])
             sigma=sigma + m*[sigmafor3segment[0]]
-            
+
             diagdf=pd.DataFrame(data={"x":x,"y":y,"sigma":sigma})
             print(diagdf.to_string())
-            
+
             if GenPanel.correction == 'rayleigh':
                 # initialParameters = np.array([1e9,1])
                 para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
@@ -1808,32 +1744,32 @@ class TabOne(wx.Panel):
                 para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
                 baseline=tmp.copy()
                 baseline.A=fct_baseline(baseline.wl.copy(), *para)+linbase(baseline.wl.copy(), *para_lin)
-                
-            
+
+
             corrected=tmp.copy()
             corrected.A=tmp.A.copy()-baseline.A
             if self.GetParent().GetParent().tab1.scaling_checkbox.GetValue() :
-                if scaling_top == 0 : 
+                if scaling_top == 0 :
                     scaling_top=corrected.A[corrected.wl.between(300,800,inclusive='both')].max()
                     corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
                 else:
                     corrected.A*=1/corrected.A[corrected.wl.between(scaling_top-5,scaling_top+5,inclusive='both')].mean()
-                
+
             GenPanel.ready_spec[i]=corrected
             # tmp, baseline=baselinefitcorr_3seg_smooth(tmp,  segment1, segment2, segmentend, sigmafor3segment)
             diagplots={}
-            if not self.GetParent().GetParent().tab1.diagplots_checkbox.GetValue() : 
+            if not self.GetParent().GetParent().tab1.diagplots_checkbox.GetValue() :
                 diagplots['fig' + str(n)], diagplots['ax' + str(n)] = plt.subplots()
                 diagplots['ax' + str(n)].set_title(str(i))
                 diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl,GenPanel.raw_spec[i].A)
                 diagplots['ax' + str(n)].plot(baseline.wl,baseline.A)
                 diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment1], GenPanel.raw_spec[i].A[segment1], color = 'lime')
                 diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segment2], GenPanel.raw_spec[i].A[segment2], color = 'magenta')
-                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson') 
+                diagplots['ax' + str(n)].plot(GenPanel.raw_spec[i].wl[segmentend], GenPanel.raw_spec[i].A[segmentend], color = 'crimson')
                 diagplots['fig' + str(n)].show()
             n+=1
         self.update_right_panel(self.typecorr)
-           
+
     def mass_center(self, typecorr):
         """
         Compute the spectral centroid (intensity-weighted mean wavelength)
@@ -1912,7 +1848,6 @@ class TabOne(wx.Panel):
         return centroids
 
 
-        
     def on_diff_spec(self, event):
         file_chooser = FileChooser(self, "Choose Two Files", 2, list(GenPanel.raw_spec.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
@@ -1926,9 +1861,9 @@ class TabOne(wx.Panel):
             print(sele_timecode)
             self.sorted_selections = [x for _, x in sorted(zip(sele_timecode, GenPanel.diff_selections), key=lambda pair: pair[0], reverse=True)]
             print(self.sorted_selections)
-            
+
             print(self.typecorr)
-            #add if statements to handle the diff spectra for all 
+            #add if statements to handle the diff spectra for all
         spec_dict = _get_spec_dict(self.typecorr)
         if spec_dict is not None:
             GenPanel.diffspec.wl = spec_dict[self.sorted_selections[0]].wl
@@ -1938,8 +1873,8 @@ class TabOne(wx.Panel):
                 - spec_dict[self.sorted_selections[1]].A
             )
         self.update_right_panel('diff')
-    
-    def on_drop_spec(self, event): #htis should open a Filechooser dialog and remove the 
+
+    def on_drop_spec(self, event): #htis should open a Filechooser dialog and remove the
         file_chooser = FileChooser(self, "Choose one or more files to drop", None, list(GenPanel.raw_spec.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
             selections = file_chooser.check_list_box.GetCheckedStrings()
@@ -1959,12 +1894,11 @@ class TabOne(wx.Panel):
                 del GenPanel.raw_spec[i]
                 GenPanel.list_spec.drop(labels=i, inplace=True)   #[list(GenPanel.list_spec.file_name == i)]
                 print(f"deleting files(s) {i} from raw")
-             
+
  #this needs to be update panel with the LeftPanel.typercor variable
             self.update_right_panel(self.typecorr)
 
 
-        
     def on_save(self, event):
         wildcard = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
         dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard,
@@ -1990,8 +1924,8 @@ class TabOne(wx.Panel):
 
     def update_right_panel(self, typecorr):
         _refresh_right_panel(self, typecorr)
-        
-        
+
+
     def backtoraw(self, event):
         self.typecorr = 'raw'
         _refresh_right_panel(self, 'raw')
@@ -2009,7 +1943,7 @@ class FileChooser(wx.Dialog):
         self.btn_ok.Enable(False)
         self.btn_cancel = wx.Button(self, wx.ID_CANCEL)
         # self.InitUI()
-        
+
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_sizer.Add(self.btn_ok)
         btn_sizer.Add(self.btn_cancel)
@@ -2021,7 +1955,7 @@ class FileChooser(wx.Dialog):
         self.SetSizer(main_sizer)
 
         self.Bind(wx.EVT_CHECKLISTBOX, self.on_checklistbox)
-    
+
     def on_checklistbox(self, event):
         selections = self.check_list_box.GetCheckedItems()
         if self.numtodrop != None:
@@ -2031,8 +1965,7 @@ class FileChooser(wx.Dialog):
 
     def on_ok(self, event):
         self.EndModal(wx.ID_OK)
-    
-    
+
 
     def OnOption(self, event):
         selected_option = self.GetMenuBar().FindItemById(event.GetId()).GetLabel()
@@ -2042,161 +1975,157 @@ class TabTwo(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent)
         # Add content for Tab 2 here
-        # kinetics 
+        # kinetics
         sizer=wx.BoxSizer(wx.VERTICAL)
-        
+
         self.field_timetrace = wx.TextCtrl(self, value = '280', style = wx.TE_CENTER)
         self.label_timetrace = wx.StaticText(self, label = 'Kinetics', style = wx.ALIGN_CENTER_HORIZONTAL)
-        
+
         self.abcisse_field = wx.TextCtrl(self, value = '1', style = wx.TE_CENTER)
         self.abcisse_label = wx.StaticText(self, label = 'Time [μs]', style = wx.ALIGN_CENTER_HORIZONTAL)
-        
-        
+
+
         self.button_timetrace = wx.Button(self, label = 'Time-trace')
         self.button_timetrace.Bind(wx.EVT_BUTTON, self.on_timetrace)
-        
-        
-        
+
+
         sizer_kinetics = wx.BoxSizer(wx.HORIZONTAL)
         sizer_timetrace = wx.BoxSizer(wx.VERTICAL)
         sizer_timetrace.Add(self.label_timetrace, 1, wx.ALL, border = 2)
         sizer_timetrace.Add(self.field_timetrace, 2, wx.ALL, border = 2)
-        
+
         sizer_abcisse = wx.BoxSizer(wx.VERTICAL)
         sizer_abcisse.Add(self.abcisse_label, 1, wx.ALL, border = 2)
         sizer_abcisse.Add(self.abcisse_field, 2, wx.ALL, border = 2)
-        
+
         sizer_kinetics.Add(sizer_timetrace,1,  wx.ALL, border = 2)
         sizer_kinetics.Add(sizer_abcisse,2,  wx.ALL, border = 2)
         # self.logscale_checkbox = wx.CheckBox(self, label = 'Log scale ?', style = wx.CHK_2STATE)
         # sizer_kinetics.Add(self.logscale_checkbox ,2, wx.ALL, border = 2)
-        
+
         self.kintypebutton = wx.Button(self, label="Kinetic model")
         self.kintypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_kinetic)
         sizer_kinetics.Add(self.kintypebutton, 3, wx.EXPAND | wx.ALL, border = 2)
         self.options=['Monoexponential', 'Hill equation', 'Strict Monoexponential']
         self.kin_model_type = 'Monoexponential'
-        
-        
+
+
         sizer.Add(sizer_kinetics, 1, wx.EXPAND | wx.ALL, border = 2)
         sizer.Add(self.button_timetrace, 1, wx.EXPAND | wx.ALL, border = 2)
-        
-        
-        
+
+
         self.button_diffserie = wx.Button(self, label = 'Difference spectra')
         self.button_diffserie.Bind(wx.EVT_BUTTON, self.on_diffserie)
         sizer.Add(self.button_diffserie,1, wx.EXPAND | wx.ALL, border = 2)
-        
+
         #2D_plot
         self.button_2D_plot = wx.Button(self, label = '2D plot')
         self.button_2D_plot.Bind(wx.EVT_BUTTON, self.on_2D_plot)
         sizer.Add(self.button_2D_plot, 1, wx.EXPAND | wx.ALL, border = 2)
 
         #deuxDplot_labels
-        
-        # deuxDplot fit #TODO : make a vertical sizer for each of them and stack them horizontally. 
+
+        # deuxDplot fit #TODO : make a vertical sizer for each of them and stack them horizontally.
         self.label_deuxDplot_start = wx.StaticText(self, label = 'Blue side end 2D plot', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_deuxDplot_start = wx.TextCtrl(self, value = '275', style = wx.TE_CENTER)
-        
+
         self.label_deuxDplot_end = wx.StaticText(self, label = 'Red side end 2D plot', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_deuxDplot_end = wx.TextCtrl(self, value = '750', style = wx.TE_CENTER)
-        
-        
+
+
         deuxDplot_label_sizer=wx.BoxSizer(wx.HORIZONTAL)
         deuxDplot_label_sizer.Add(self.label_deuxDplot_start, 1, wx.ALL, border=2)
         deuxDplot_label_sizer.Add(self.label_deuxDplot_end, 1, wx.ALL, border=2)
         # deuxDplot_label_sizer.Add(self.label_deuxDplot_rate, 1, wx.ALL, border=2)
         # deuxDplot_label_sizer.Add(self.field_deuxDplot_rate, 1, wx.ALL, border=2)
-        
+
         sizer.Add(deuxDplot_label_sizer,1, wx.EXPAND | wx.ALL, border = 0)
-        
-        
+
+
         deuxDplot_field_sizer=wx.BoxSizer(wx.HORIZONTAL)
         deuxDplot_field_sizer.Add(self.field_deuxDplot_start, 1, wx.ALL, border=2)
         deuxDplot_field_sizer.Add(self.field_deuxDplot_end, 1, wx.ALL, border=2)
         # sizer.Add(deuxDplot_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
         sizer.Add(deuxDplot_field_sizer,1, wx.EXPAND | wx.ALL, border = 0)
-        
-        # kinetic fit #TODO : make a vertical sizer for each of them and stack them horizontally. 
+
+        # kinetic fit #TODO : make a vertical sizer for each of them and stack them horizontally.
         self.label_kinetic_start = wx.StaticText(self, label = 'Start', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_start = wx.TextCtrl(self, value = '10', style = wx.TE_CENTER)
-        
+
         self.label_kinetic_end = wx.StaticText(self, label = 'End', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_end = wx.TextCtrl(self, value = '12000000', style = wx.TE_CENTER)
-        
-        
-        
-        
+
+
         kinetic_label_sizer=wx.BoxSizer(wx.HORIZONTAL)
         kinetic_label_sizer.Add(self.label_kinetic_start, 1, wx.ALL, border=2)
         kinetic_label_sizer.Add(self.label_kinetic_end, 1, wx.ALL, border=2)
         # kinetic_label_sizer.Add(self.label_kinetic_rate, 1, wx.ALL, border=2)
         # kinetic_label_sizer.Add(self.field_kinetic_rate, 1, wx.ALL, border=2)
-        
+
         sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 0)
-        
-        
+
+
         kinetic_field_sizer=wx.BoxSizer(wx.HORIZONTAL)
         kinetic_field_sizer.Add(self.field_kinetic_start, 1, wx.ALL, border=2)
         kinetic_field_sizer.Add(self.field_kinetic_end, 1, wx.ALL, border=2)
         # sizer.Add(kinetic_label_sizer,1, wx.EXPAND | wx.ALL, border = 1)
         sizer.Add(kinetic_field_sizer,1, wx.EXPAND | wx.ALL, border = 0)
-        
+
         #SVD
         self.button_SVD = wx.Button(self, label = 'Singular Value Decomposition')
         self.button_SVD.Bind(wx.EVT_BUTTON, self.on_SVD)
         sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
         kin_par_sizer=wx.BoxSizer(wx.HORIZONTAL)
-        
+
         kin_const_sizer=wx.BoxSizer(wx.VERTICAL)
-        self.label_kinetic_constant = wx.StaticText(self, label = 'constant', style = wx.ALIGN_CENTER_HORIZONTAL)        
+        self.label_kinetic_constant = wx.StaticText(self, label = 'constant', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_constant = wx.TextCtrl(self, style = wx.TE_CENTER)
         kin_const_sizer.Add(self.label_kinetic_constant, 1, wx.CENTER)
         kin_const_sizer.Add(self.field_kinetic_constant, 1, wx.CENTER)
         kin_par_sizer.Add(kin_const_sizer, 1, wx.CENTER)
-        
+
         kin_scal_sizer=wx.BoxSizer(wx.VERTICAL)
-        self.label_kinetic_scalar = wx.StaticText(self, label = 'scalar', style = wx.ALIGN_CENTER_HORIZONTAL)        
+        self.label_kinetic_scalar = wx.StaticText(self, label = 'scalar', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_scalar = wx.TextCtrl(self, style = wx.TE_CENTER)
         kin_scal_sizer.Add(self.label_kinetic_scalar, 1, wx.CENTER)
         kin_scal_sizer.Add(self.field_kinetic_scalar, 1, wx.CENTER)
         kin_par_sizer.Add(kin_scal_sizer, 1, wx.CENTER)
-        
-        #insert the sizers in the 
+
+        #insert the sizers in the
         kin_rate_sizer=wx.BoxSizer(wx.VERTICAL)
         self.label_kinetic_rate = wx.StaticText(self, label = 'Rate', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_rate = wx.TextCtrl(self, style = wx.TE_CENTER)
         kin_rate_sizer.Add(self.label_kinetic_rate, 1, wx.CENTER)
         kin_rate_sizer.Add(self.field_kinetic_rate, 1, wx.CENTER)
         kin_par_sizer.Add(kin_rate_sizer, 1, wx.CENTER)
-        
+
         sizer.Add(kin_par_sizer, 1, wx.EXPAND | wx.ALL, border = 2)
-        
-        
+
+
         self.kin_button = wx.Button(self, label = 'Kinetic fit')
         self.kin_button.Bind(wx.EVT_BUTTON, self.on_kinetic_fit)
         sizer.Add(self.kin_button, 1, wx.EXPAND  | wx.ALL, border = 2)
-        
-        
+
+
         # save
         self.button_save = wx.Button(self, label="Save figure and spectra")
         self.button_save.Bind(wx.EVT_BUTTON, self.on_save)
         sizer.Add(self.button_save, 1, wx.EXPAND | wx.ALL, border = 2)
         self.SetSizer(sizer)
-        
+
         # self.logscale = self.logscale_checkbox.GetValue()
-        
+
     def OnContextMenu_kinetic(self, event):
         menu=wx.Menu()
-        
+
         for index, option in enumerate(self.options):
             item_id = wx.ID_HIGHEST + index
             item = menu.Append(item_id, option)
             self.Bind(wx.EVT_MENU, self.OnMenuSelect, item)
-            
+
         self.PopupMenu(menu)
         menu.Destroy()
-        
+
     def OnMenuSelect(self, event):
         item = event.GetId() - wx.ID_HIGHEST
         if 0 <= item < len(self.options):
@@ -2205,12 +2134,12 @@ class TabTwo(wx.Panel):
             print("Chosen option:", self.kin_model_type)
         else:
             print("Error: Invalid option selected")
-        
-        
+
+
         # pass  # Add your content here
     def on_timetrace(self, event):
         #TODO : add the possibility of fitting a constant to the data points
-        
+
         # if self.logscale_checkbox.GetValue():
         #     print('Logarithmic scale has been chosen')
         # else :
@@ -2226,7 +2155,7 @@ class TabTwo(wx.Panel):
                 ]
         print(GenPanel.list_spec)
         self.update_right_panel('time-trace')
-    
+
     def on_kinetic_fit(self,event):
         # file_chooser = FileChooser(self, "Which model do you want to fit", 1, ['Monoexponential', 'Hill equation'])
         # if file_chooser.ShowModal() == wx.ID_OK:
@@ -2235,16 +2164,15 @@ class TabTwo(wx.Panel):
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
         # p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
-        
-        
-        
+
+
         # print('this is the intial value of the rate: ',str(p0))
         # rate0 = float(self.field_kinetic_rate.GetValue())
-        x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that 
+        x=(np.array(GenPanel.list_spec.time_code[GenPanel.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that
         y=np.array(GenPanel.list_spec.Abs[GenPanel.list_spec.time_code.between(startfit,endfit)])
         # print(x,y)
-        #TODO decide whether we should add initial parameters to the fit or not. 
-        
+        #TODO decide whether we should add initial parameters to the fit or not.
+
         self.model = pd.DataFrame(columns=['x','y'])
         # if self.logscale_checkbox.GetValue():
         #     self.model.x = np.geomspace(x.min(), x.max(), 1000)
@@ -2252,9 +2180,9 @@ class TabTwo(wx.Panel):
         #         self.model.y = fct_monoexp(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         #     elif self.kin_model_type == 'Hill equation':
         #         self.model.y = fct_Hill(np.geomspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-        # else : 
+        # else :
         self.model.x = np.linspace(x.min(), x.max(), 1000)
-        
+
         if self.kin_model_type == 'Monoexponential':
             sigma = np.array(len(x)*[1])
             print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
@@ -2269,10 +2197,10 @@ class TabTwo(wx.Panel):
                 try:
                     strict_scalar=parse_float(self.field_kinetic_scalar.GetValue())
                     print(f"strict y endpoint of {strict_scalar} used")
-                    def fct_monoexp_strict(x,tau): 
+                    def fct_monoexp_strict(x,tau):
                         return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
                 except :
-                    def fct_monoexp_strict(x,b,tau): 
+                    def fct_monoexp_strict(x,b,tau):
                         return(strict_constant + b*(1-np.exp(-x/tau)))
                 self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
                 self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
@@ -2294,11 +2222,10 @@ class TabTwo(wx.Panel):
             self.model.y = fct_Hill(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         #print(p0)
         print(self.para_kin_fit)
-        
+
         self.update_right_panel('kinetic_fit')
 
 
-    
     def on_diffserie(self, event):
         typecorr = self.GetParent().GetParent().tab1.typecorr
         spec_dict = _get_spec_dict(typecorr)
@@ -2321,13 +2248,13 @@ class TabTwo(wx.Panel):
                 # test.append(np.array(GenPanel.diffserie[spec]))
                 test.append(np.array(GenPanel.const_spec[spec].A[GenPanel.const_spec[spec].wl.between(280,700)]))
             GenPanel.Z=np.transpose(np.array(test))
-            
-            # fig, ax = plt.subplots()  
-            
-            plt.imshow(GenPanel.Z, 
-                       aspect='auto', 
-                       cmap='rainbow', 
-                       origin='lower', 
+
+            # fig, ax = plt.subplots()
+
+            plt.imshow(GenPanel.Z,
+                       aspect='auto',
+                       cmap='rainbow',
+                       origin='lower',
                        extent=(start*dose,endfit*dose,280,750))
 
             plt.colorbar(label='Absorbance')
@@ -2336,18 +2263,17 @@ class TabTwo(wx.Panel):
             plt.ylabel('Wavelength [nm]')  # Replace with your actual label
             # plt.title('UV-vis absorbtion spectrum of lysosyme over time')
             plt.show()
-        
-        
-        
+
+
         self.update_right_panel('2D_plot')
-        
+
     def on_SVD(self, event):
         if self.GetParent().GetParent().tab3.red_to_blue_checkbox.GetValue():
             pal='Spectral_r'
         else:
             pal='Spectral'
         # if GenPanel.list_spec.laser_blue.isnull().all():
-            # tokeep_dark = 
+            # tokeep_dark =
         # if ~all([x == None for x in GenPanel.list_spec.laser_dent_blue]) :
         laser_blue=GenPanel.list_spec.laser_dent_blue.min()
         laser_red=GenPanel.list_spec.laser_dent_red.max()
@@ -2374,43 +2300,43 @@ class TabTwo(wx.Panel):
                 - spec_dict[ref_name].A[spec_dict[ref_name].wl.between(300, 800)][tokeep_dark]
             )
 
-        U, S, VT = np.linalg.svd(A) 
+        U, S, VT = np.linalg.svd(A)
         # print(S)
         # print(VT)
         sigmatrix=np.array(np.zeros(shape=(m,n)),dtype=np.float32)
         # nSV=['SV' + str(i) for i in range(n+1)]
         # rSV={'time':list(GenPanel.list_spec.index)}
-        
+
         for i in range(0,len(S)):
             print(i,S[i])
             sigmatrix[i,i]=S[i]
         self.scaled_time_factors=(sigmatrix @ VT)[0:n,:]
         self.scaled_spec_lSV=np.matrix(U) @ np.matrix(sigmatrix)
-        
-        
+
+
         print(self.scaled_time_factors)
         print(self.scaled_spec_lSV)
-        
+
         # print(GenPanel.list_spec.time_code[1:])
         # print(GenPanel.list_spec.time_code[1:])
         # print(self.scaled_time_factors)
-        # fig, ax = plt.subplots()     
-        # self.plot_panel.set_xlabel('time-point (µs, in log scale)', fontsize=35)  
-        # self.plot_panel.xaxis.set_label_coords(x=0.5, y=-0.13)      
-        # self.plot_panel.set_ylabel('Magnitude', fontsize=35)               
-        # self.plot_panel.yaxis.set_label_coords(x=-0.12, y=0.5)       
+        # fig, ax = plt.subplots()
+        # self.plot_panel.set_xlabel('time-point (µs, in log scale)', fontsize=35)
+        # self.plot_panel.xaxis.set_label_coords(x=0.5, y=-0.13)
+        # self.plot_panel.set_ylabel('Magnitude', fontsize=35)
+        # self.plot_panel.yaxis.set_label_coords(x=-0.12, y=0.5)
         print(n, m)
-        
-        
+
+
         dose=float(self.abcisse_field.GetValue())
-        
-        
+
+
         palette=sns.color_palette(palette=pal, n_colors=min(5,len(self.scaled_time_factors)))
-         
+
         for i in range(0,min(5,len(self.scaled_time_factors))):
-            wi.plot(dose*np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]), 
+            wi.plot(dose*np.array(GenPanel.list_spec.time_code[1:]),np.array(self.scaled_time_factors[i]),
                     marker='o',
-                    linewidth=0, 
+                    linewidth=0,
                     style = 'line',
                     markersize= 4,
                     label='SV n° ' + str(i),
@@ -2418,11 +2344,10 @@ class TabTwo(wx.Panel):
                     xlabel = 'time-point (µs, in log scale)',
                     ylabel = 'Magnitude',
                     title = 'right Singular Vector')
-            
+
         self.update_right_panel('SVD')
-        
+
     def on_save(self, event):
-        print('balise')
         wildcard = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
         dialog = wx.FileDialog(self, "Save File(s)", wildcard=wildcard,
                                style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
@@ -2470,7 +2395,7 @@ class TabTwo(wx.Panel):
 
     def update_right_panel(self, typecorr):
         _refresh_right_panel(self, typecorr)
-        
+
     # def on_close(self, event):
     #     self.Destroy()
 
@@ -2478,16 +2403,15 @@ class TabThree(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent)
         # Add content for Tab 2 here
-        # kinetics 
+        # kinetics
         sizer=wx.BoxSizer(wx.VERTICAL)
-        
-        
+
+
         smoothsizer = wx.BoxSizer(wx.HORIZONTAL)
         self.smoothtypebutton = wx.Button(self, label="Smoothing type")
         self.smoothtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_smoothing)
-        
-        
-        
+
+
         smoothsizer.Add(self.smoothtypebutton, 2, wx.EXPAND)
         smoothwindowsizer = wx.BoxSizer(wx.VERTICAL)
         self.smooth_window_label = wx.StaticText(self, label = 'Smoothing window' , style = wx.ALIGN_CENTER)
@@ -2496,42 +2420,38 @@ class TabThree(wx.Panel):
         smoothwindowsizer.Add(self.smooth_window_label, 1 , wx.ALIGN_CENTER)
         smoothwindowsizer.Add(self.smooth_window_field, 1 , wx.ALIGN_CENTER)
         smoothwindowsizer.Add(self.red_to_blue_checkbox, 1 , wx.ALIGN_CENTER)
-        
+
         smoothsizer.Add(smoothwindowsizer, 1, wx.EXPAND)
-        
-       
-        
+
+
         sizer.Add(smoothsizer, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
-        
-        
-        
-        
-        
+
+
         self.corrtypebutton = wx.Button(self, label="Backgound correction type")
         self.corrtypebutton.Bind(wx.EVT_RIGHT_DOWN, self.OnContextMenu_correction)
         sizer.Add(self.corrtypebutton, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
-        
+
         self.qualityscore_button = wx.Button(self, label='print quality of a spectrum')
         self.qualityscore_button.Bind(wx.EVT_BUTTON, self.On_qual)
         sizer.Add(self.qualityscore_button, 1, wx.EXPAND | wx.HORIZONTAL, border = 2)
-        
-        
+
+
         # laser_removal_sizer=wx.BoxSizer(wx.HORIZONTAL)
         self.laser_removal_button = wx.Button(self, label='remove laser dent')
         self.laser_removal_button.Bind(wx.EVT_BUTTON, self.OnLaserRemove)
-        # laser_removal_fieldsizer = BoxSizer(wx.VERTICAL)   
+        # laser_removal_fieldsizer = BoxSizer(wx.VERTICAL)
         # self.laser_remove_label = wx.StaticText(self, label = 'Excitation wavelength', style = wx.ALIGN_CENTER_HORIZONTAL)
         # laser_removal_fieldsizer.Add(self.laser_remove_label,1 , wx.ALIGN_CENTER | wx.ALL, border = 2)
         # self.laser_remove_field = wx.TextCtrl(self, value = '450', style = wx.TE_CENTER)
         # laser_removal_fieldsizer.Add(self.laser_remove_field,2 , wx.ALIGN_CENTER | wx.ALL, border = 2)
-        
+
         # laser_removal_sizer.Add(laser_removal_fieldsizer, 1, wx.ALIGN_CENTER | wx.ALL, border = 2)
         # laser_removal_sizer.Add(laser_removal_button, 2, wx.ALIGN_CENTER | wx.ALL, border = 2)
         # sizer.Add(laser_removal_sizer, 4, wx.EXPAND, | wx.HORIZONTAL, border = 2)
-        sizer.Add(self.laser_removal_button, 1, wx.EXPAND | wx.ALL, border=2)       
-        
+        sizer.Add(self.laser_removal_button, 1, wx.EXPAND | wx.ALL, border=2)
+
         self.SetSizer(sizer)
-        
+
     def OnContextMenu_smoothing(self, event):
         menu = wx.Menu()
 
@@ -2546,7 +2466,7 @@ class TabThree(wx.Panel):
 
         self.PopupMenu(menu)
         menu.Destroy()
-        
+
     def OnStavitskiGolay(self, event):
         print("Stavitski-Golay selected")
         GenPanel.smoothing = 'savgol'
@@ -2554,8 +2474,8 @@ class TabThree(wx.Panel):
     def OnRollingAverage(self, event):
         print("Rolling-Average selected")
         GenPanel.smoothing = 'rolling'
-    
-    
+
+
     def OnContextMenu_correction(self, event):
         menu = wx.Menu()
 
@@ -2564,8 +2484,8 @@ class TabThree(wx.Panel):
         custom = wx.MenuItem(menu, wx.NewId(), "1/λ^n")
         straight = wx.MenuItem(menu, wx.NewId(), 'tinker')
         lin_rayleigh = wx.MenuItem(menu, wx.NewId(), "Linear+Rayleigh")
-        
-        
+
+
         menu.Append(rayleigh)
         menu.Append(full)
         menu.Append(custom)
@@ -2579,7 +2499,7 @@ class TabThree(wx.Panel):
         self.Bind(wx.EVT_MENU, self.OnLinRay, lin_rayleigh)
         self.PopupMenu(menu)
         menu.Destroy()
-        
+
     def OnRayleigh(self, event):
         print("Only rayleigh correction has been selected")
         GenPanel.correction = 'rayleigh'
@@ -2587,19 +2507,19 @@ class TabThree(wx.Panel):
     def OnFullCorr(self, event):
         print("Rolling-Average selected")
         GenPanel.correction = 'full'
-    
+
     def OnCustomCorr(self, event):
         print("1/λ^n selected")
         GenPanel.correction = 'custom'
-        
+
     def OnStraight(self, event):
         print('tinker correction has been chosen')
         GenPanel.correction='straight'
-        
+
     def OnLinRay(self, event):
         GenPanel.correction='lin_rayleigh'
         print("linear + rayleigh correction has been chosen")
-        
+
     def On_qual(self, event):
         file_chooser = FileChooser(self, "Choose a File", 1, list(GenPanel.raw_lamp.keys()))
         if file_chooser.ShowModal() == wx.ID_OK:
@@ -2618,7 +2538,7 @@ class TabThree(wx.Panel):
                                                        polyorder=3)
                 peaks, _ = signal.find_peaks(-lasered_data)
                 #assessing whether the dent found is indeed the laser dent, i. e. if it is close to the poisitoin of the laser dent in the first spectrum
-                if peak_position_first== 0 : 
+                if peak_position_first== 0 :
                     prominences, left_edge, right_edge = signal.peak_prominences(-lasered_data, peaks, wlen = 30)
                     peak_left = left_edge[np.argmax(prominences)]
                     peak_position = peaks[np.argmax(prominences)]
@@ -2632,7 +2552,7 @@ class TabThree(wx.Panel):
                     wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
                     laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
                     laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
-                    print('in ' + spec + ' Laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))  
+                    print('in ' + spec + ' Laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))
                     GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
                     GenPanel.list_spec.laser_dent_blue[spec]=laser_blue-5
                     GenPanel.list_spec.laser_dent_red[spec]=laser_red+5
@@ -2653,16 +2573,15 @@ class TabThree(wx.Panel):
                         wavelength_laser = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]
                         laser_blue = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_left]
                         laser_red = GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_right]
-                        print('in ' + spec + ' laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))  
+                        print('in ' + spec + ' laser dent found at '+ str(GenPanel.raw_spec[spec].wl[GenPanel.raw_spec[spec].wl.between(350,800)].iloc[peak_position]))
                         GenPanel.raw_spec[spec]=GenPanel.raw_spec[spec][~ GenPanel.raw_spec[spec].wl.between(laser_blue-5, laser_red+5)]
                         GenPanel.list_spec.laser_dent_blue[spec]=laser_blue-5
                         GenPanel.list_spec.laser_dent_red[spec]=laser_red+5
                     else:
                         print('in ' + spec + ' no laser dent found')
             print(GenPanel.list_spec[['laser_dent_blue','laser_dent_red']])
-        
 
-    
+
 # Suppress GTK warning
 
 

@@ -13,9 +13,9 @@ It consists in three tabs: (a) the main tab, where spectra can be corrected and 
 
 - Dependencies are managed by a python project .toml file (and the conda environnement). Any missing dependencies can be installed by running 
 ```bash
-python -m pip --no-deps install .
+python -m pip install --no-deps .
 ```
-  The --no-deps flag is here to make sure pip does not try to install dependencies that are still managed by conda.
+  The `--no-deps` flag is here to make sure pip does not try to install dependencies that are still managed by conda.
 - Timing or pH can be extracted from file names directly: 
   - Simply name your files ...pH7.0...txt or ...30ms...txt. 
   - Spectra coming from TR-icOS can be named with the usual scheme. 
@@ -59,7 +59,18 @@ If the wxmplot package is not found, it might be because your conda install does
 conda config --append channels conda-forge
 ```
 
-Once the environment is created, the script can be run as in the previous section. 
+Once the environment is created and activated, you can either run the script directly:
+
+```bash
+    python icOS_toolbox.py
+```
+
+Or install it as a command-line tool (so you can launch it by typing `icos-toolbox` from anywhere):
+```bash
+    pip install --no-deps .
+```
+The `--no-deps` flag is important — it tells pip to install only the `icos-toolbox` 
+entry point, not re-fetch dependencies that conda has already provided.
 
 # Spectra correction
 
@@ -85,7 +96,7 @@ For the estimation of the contribution of scattering and other phenomena, the ba
 
 ### Laser dent removal
 
-Because of the duration of integration of the spectrophotometer in the TR*-ic*OS setup, the tail of the nanosecond laser used to initiate the reaction in crystals can also contribute to the absorption spectrum, in the form of a negative dip, or dent in the absorption spectrum (plot below). The second derivative of the absorption spectra is calculated, and its local minima identify the absorption dips, as well as their edges. The largest absoption dip (in amplitude) marks the contribution of the nanosecond laser to the spectrum, while all other dips are marked by red dots. The data points corresponding to the contribution of the laser are removed. In the following spectra, only the main dent in the area of the previously detected laser dent is marked, and the corresponding points are also removed.
+Because of the duration of integration of the spectrophotometer in the TR-*ic*OS setup, the tail of the nanosecond laser used to initiate the reaction in crystals can also contribute to the absorption spectrum, in the form of a negative dip, or dent in the absorption spectrum (plot below). The second derivative of the absorption spectra is calculated, and its local minima identify the absorption dips, as well as their edges. The largest absoption dip (in amplitude) marks the contribution of the nanosecond laser to the spectrum, while all other dips are marked by red dots. The data points corresponding to the contribution of the laser are removed. In the following spectra, only the main dent in the area of the previously detected laser dent is marked, and the corresponding points are also removed.
 
 ![image 3](https://github.com/user-attachments/assets/7f023b2a-3ee8-493c-b5cc-384f4cb80e91)
 
