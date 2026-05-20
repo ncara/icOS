@@ -818,7 +818,7 @@ class Modified_plot_panel(PlotPanel):
         # self.canvas.Refresh()
 
 
-    def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [AU]',
+    def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [-]',
                      I0=None, side='left', zoom_limits=None, show_legend=False, **kws):
         """
         plot many traces at once, taking a list of (x, y) pairs
