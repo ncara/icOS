@@ -1018,7 +1018,7 @@ class RightPanel(GenPanel):
                     linewidth=2, style='line', marker=None, markersize=0,
                     label=name + label_suffix,
                     color=rgb_to_hex(palette[n]),
-                    ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
+                    ylabel='Absorbance [-]', xlabel='Wavelength [nm]',
                 )
             # Mass-center vline: original code draws this whether or not we
             # are in batch mode (though axvline on plot_many_modified panels
@@ -1030,7 +1030,7 @@ class RightPanel(GenPanel):
         if batch:
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot,
-                ylabel='Absorbance [AU]', xlabel='Wavelength [nm]', palin=pal,
+                ylabel='Absorbance [-]', xlabel='Wavelength [nm]', palin=pal,
             )
 
     @staticmethod
@@ -1053,7 +1053,7 @@ class RightPanel(GenPanel):
             np.array(app_state.diffspec.wl),
             np.array(app_state.diffspec.A),
             linewidth=2, style='line', marker=None, markersize=0,
-            ylabel='Absorbance [AU]', xlabel='Wavelength [nm]',
+            ylabel='Absorbance [-]', xlabel='Wavelength [nm]',
             title='Difference spectrum',
         )
 
@@ -1075,14 +1075,14 @@ class RightPanel(GenPanel):
                     linewidth=2, style='line', marker=None, markersize=0,
                     label=spec + '- dark',
                     title='Difference spectra series',
-                    xlabel='Wavelength [nm]', ylabel='Absorbance [AU]',
+                    xlabel='Wavelength [nm]', ylabel='Absorbance [-]',
                     color=rgb_to_hex(palette[i + 1]),
                 )
         if batch:
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot,
                 title='Difference spectra series',
-                xlabel='Wavelength [nm]', ylabel='Absorbance [AU]', palin=pal,
+                xlabel='Wavelength [nm]', ylabel='Absorbance [-]', palin=pal,
             )
 
     # --- handlers: kinetics ------------------------------------------------
@@ -1098,7 +1098,7 @@ class RightPanel(GenPanel):
             (np.array(app_state.list_spec.time_code) - startfit) * dose,
             np.array(app_state.list_spec.Abs),
             marker='o', markersize=4, color='blue', linewidth=0,
-            ylabel='Absorbance [AU]', xlabel='Time [s]',
+            ylabel='Absorbance [-]', xlabel='Time [s]',
             title='Absorbance at ' + wavelength + ' over time',
         )
 
@@ -1114,14 +1114,14 @@ class RightPanel(GenPanel):
             np.array(app_state.list_spec.Abs),
             color='blue',
             marker='o', markersize=4, linewidth=0, alpha=0.5, style=None,
-            ylabel='Absorbance [AU]', xlabel='Time [s]',
+            ylabel='Absorbance [-]', xlabel='Time [s]',
             label='abs at ' + wavelength, legend_on=True,
         )
         self.plot_panel.oplot(
             np.array(tab2.model.x), np.array(tab2.model.y),
             linewidth=4, alpha=0.5, style='line', marker=None, markersize=0,
             label='modelled kinetic with tau=' + format(tab2.para_kin_fit[-1], '.3f'),
-            ylabel='Absorbance [AU]', xlabel='Time [s]',
+            ylabel='Absorbance [-]', xlabel='Time [s]',
             title='Absorbance at ' + wavelength + 'nm over time after laser pulse',
             color='red', legend_on=True,
         )
@@ -1155,13 +1155,13 @@ class RightPanel(GenPanel):
                 linewidth=2, style='line', marker=None, markersize=0,
                 label='SV n° ' + str(i),
                 title='left Singular Vectors',
-                xlabel='Wavelength [nm]', ylabel='Absorbance [AU]',
+                xlabel='Wavelength [nm]', ylabel='Absorbance [-]',
                 color=rgb_to_hex(palette[i]),
             )
         if batch:
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot, title='left Singular Vectors',
-                xlabel='Wavelength [nm]', ylabel='Absorbance [AU]', palin=pal,
+                xlabel='Wavelength [nm]', ylabel='Absorbance [-]', palin=pal,
             )
 
     def _plot_quality(self):
@@ -1763,7 +1763,7 @@ class TabOne(wx.Panel):
 
             diagdf=pd.DataFrame(data={"x":x,"y":y,"sigma":sigma})
             print(diagdf.to_string())
-
+            print(sigma)
             if app_state.correction == 'rayleigh':
                 # initialParameters = np.array([1e9,1])
                 para, pcov = sp.optimize.curve_fit(f=fct_baseline, xdata=x, ydata=y, sigma=sigma)
