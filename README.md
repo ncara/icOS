@@ -11,6 +11,7 @@ It consists in three tabs: (a) the main tab, where spectra can be corrected and 
 
 # New features !
 
+- Laser dent removal is now signalled by line-breaks. The colour can be tuned in the configure panel, and the height & width of slashes can be tuned in the expert settings panel. The extent of laser dent removal can be tuned there, as well as the colour of the line-breaks.
 - Dependencies are managed by a python project .toml file (and the conda environnement). Any missing dependencies can be installed by running 
 ```bash
 python -m pip install --no-deps .

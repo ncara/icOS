@@ -90,6 +90,87 @@ def rgb_to_hex(rgb):
     return '#{0:02x}{1:02x}{2:02x}'.format(r, g, b)
 
 
+def break_at_gap(wl, y, gap_blue, gap_red):
+    """
+    Break a wavelength trace across a removed (laser-dent) region so the plot
+    shows a gap instead of interpolating straight across it.
+
+    Any samples falling inside [gap_blue, gap_red] are set to NaN, and -- for
+    the usual case where those points were already deleted from the spectrum --
+    a single NaN sample is inserted at the gap midpoint so the line still
+    splits. matplotlib/wxmplot draws no segment touching a NaN, giving a clean
+    break. A no-op when either bound is NaN (no dent recorded).
+
+    ``wl`` is assumed sorted ascending (true for every spectrum here). ``y`` is
+    flattened to 1-D so column-vector inputs (e.g. SVD ``scaled[:, i]``) work.
+    Returns new (wl, y) float arrays; inputs are not mutated.
+    """
+    wl = np.asarray(wl, dtype=float)
+    y = np.asarray(y, dtype=float).ravel().copy()
+    if not (np.isfinite(gap_blue) and np.isfinite(gap_red)):
+        return wl, y
+    interior = (wl >= gap_blue) & (wl <= gap_red)
+    y[interior] = np.nan
+    if not interior.any():
+        mid = 0.5 * (gap_blue + gap_red)
+        idx = int(np.searchsorted(wl, mid))
+        wl = np.insert(wl, idx, mid)
+        y = np.insert(y, idx, np.nan)
+    return wl, y
+
+
+# Default size of the laser-dent interruption marks, in data units: full width
+# of one '/' stroke in nm, full height in absorbance (AU). These are the field
+# defaults in the Expert Settings tab and the fallback when a field is blank or
+# invalid. Thickness is fixed (cosmetic, not data-scaled). Marks are black by
+# default; ticking 'Colour slashes by trace ?' draws them in the trace colour.
+SLASH_WIDTH_DEFAULT = 1.0     # nm
+SLASH_HEIGHT_DEFAULT = 0.03   # absorbance units (AU)
+SLASH_THICKNESS = 4           # line width in points
+
+
+def slash_marks(wl, y, gap_blue, gap_red,
+                width=SLASH_WIDTH_DEFAULT, height=SLASH_HEIGHT_DEFAULT):
+    """
+    Build a NaN-separated polyline drawing a single diagonal '/' mark at each
+    boundary of a removed (laser-dent) region, to flag the interruption.
+
+    One slash sits at the last sample left of ``gap_blue`` and one at the first
+    sample right of ``gap_red``, at their real absorbance values. ``width`` (nm)
+    and ``height`` (absorbance units) are the full size of a slash in data
+    coordinates -- so the marks keep a fixed data size and distort a little on
+    zoom, the deliberate "simple" choice. Returns (xs, ys) for a single
+    ``oplot(..., style='line')`` call, or (None, None) when there is nothing to
+    draw (no dent, empty data, or no surviving edge).
+    """
+    if not (np.isfinite(gap_blue) and np.isfinite(gap_red)):
+        return None, None
+    wl = np.asarray(wl, dtype=float)
+    y = np.asarray(y, dtype=float).ravel()
+    if y[np.isfinite(y)].size == 0 or wl.size == 0:
+        return None, None
+    dx = width / 2.0    # half-width of the slash
+    dy = height / 2.0   # half-height of the slash
+
+    xs, ys = [], []
+
+    def _slash(x0, yc):
+        # one forward slash centred on (x0, yc)
+        xs.extend([x0 - dx, x0 + dx, np.nan])
+        ys.extend([yc + dy, yc - dy, np.nan])
+
+    left = np.where((wl < gap_blue) & np.isfinite(y))[0]
+    if left.size:
+        _slash(wl[left[-1]], y[left[-1]])
+    right = np.where((wl > gap_red) & np.isfinite(y))[0]
+    if right.size:
+        _slash(wl[right[0]], y[right[0]])
+
+    if not xs:
+        return None, None
+    return np.array(xs), np.array(ys)
+
+
 def straightforward_solution(x, a, b, c, d):
     """
     This function calculates a reflection coefficient using the given parameters.
@@ -584,6 +665,42 @@ def _get_spec_dict(typecorr):
     }.get(typecorr)
 
 
+def _dent_bounds(name):
+    """
+    Recorded laser-dent bounds (blue, red) for a spectrum, looked up by name in
+    ``app_state.list_spec``. Returns (nan, nan) when the spectrum is unknown or
+    has no dent recorded, which ``break_at_gap`` / ``slash_marks`` treat as
+    no-op.
+    """
+    try:
+        gap_blue = float(app_state.list_spec.loc[name, 'laser_dent_blue'])
+        gap_red = float(app_state.list_spec.loc[name, 'laser_dent_red'])
+    except (KeyError, TypeError, ValueError):
+        return float('nan'), float('nan')
+    return gap_blue, gap_red
+
+
+def _union_dent(names):
+    """
+    Widest dent covering any of the given spectra: min of the blue bounds, max
+    of the red bounds, ignoring spectra without a recorded dent (or None).
+    Returns (nan, nan) when none has a dent. Used where one plotted trace is
+    derived from several spectra (a difference spectrum spans the dents of both
+    operands).
+    """
+    blues, reds = [], []
+    for name in names:
+        if name is None:
+            continue
+        gap_blue, gap_red = _dent_bounds(name)
+        if np.isfinite(gap_blue) and np.isfinite(gap_red):
+            blues.append(gap_blue)
+            reds.append(gap_red)
+    if not blues:
+        return float('nan'), float('nan')
+    return min(blues), max(reds)
+
+
 def _split_save_path(totalpath):
     """
     Split a user-picked file path into (directory-with-trailing-sep, basename).
@@ -909,6 +1026,21 @@ class RightPanel(GenPanel):
         """Shortcut to TabTwo (kinetics fields, SVD results)."""
         return self.GetParent().left_panel.tab2
 
+    def _tab3(self):
+        """Shortcut to TabThree (Expert Settings: smoothing, slash sizes)."""
+        return self.GetParent().left_panel.tab3
+
+    def _propagate_dent(self):
+        """True when 'propagate largest dent to all spectra' is ticked."""
+        return bool(self._tab3().propagate_dent_checkbox.GetValue())
+
+    def _global_gap(self):
+        """
+        Widest laser-dent gap across all spectra (min blue, max red) -- the
+        same span the SVD uses. (nan, nan) when no dent is recorded anywhere.
+        """
+        return _union_dent(list(app_state.list_spec.file_name))
+
     @staticmethod
     def _resolve_scaling_top(df, scaling_top):
         """
@@ -931,6 +1063,52 @@ class RightPanel(GenPanel):
         if windowed.empty:
             return ' peak max = N/A'
         return ' peak max = ' + format(windowed.A.idxmax(), '.2f')
+
+    def _draw_slashes(self, wl, y, gap_blue, gap_red, color):
+        """
+        Overlay diagonal '/' interruption marks at the edges of a removed
+        (laser-dent) region. ``wl``/``y`` should be the *pre-break* arrays so
+        the marks sit at the true edge absorbances. Mark size comes from the
+        Expert Settings fields (width in nm, height in AU). Marks are black
+        unless 'Colour slashes by trace ?' is ticked, in which case the trace
+        colour (``color``) is used. No-op when there is no dent or no surviving
+        edge.
+        """
+        width, height = self._slash_size()
+        xs, ys = slash_marks(wl, y, gap_blue, gap_red, width, height)
+        if xs is None:
+            return
+        slash_colour = color if self._slash_use_trace_colour() else 'black'
+        self.plot_panel.oplot(
+            xs, ys,
+            linewidth=SLASH_THICKNESS, style='line', marker=None, markersize=0,
+            color=slash_colour,
+        )
+
+    def _slash_size(self):
+        """
+        Read slash width (nm) / height (AU) from the Expert Settings fields,
+        falling back to the module defaults on blank or invalid input. Only
+        positive finite values are accepted.
+        """
+        tab3 = self._tab3()
+
+        def _read(field, default):
+            try:
+                value = parse_float(field.GetValue())
+            except (ValueError, TypeError):
+                return default
+            return value if value > 0 else default
+
+        return (
+            _read(tab3.slash_width_field, SLASH_WIDTH_DEFAULT),
+            _read(tab3.slash_height_field, SLASH_HEIGHT_DEFAULT),
+        )
+
+    def _slash_use_trace_colour(self):
+        """True when 'Colour slashes by trace ?' is ticked; otherwise the
+        slashes are drawn black."""
+        return bool(self._tab3().slash_trace_colour_checkbox.GetValue())
 
     # --- main dispatch -----------------------------------------------------
 
@@ -991,6 +1169,13 @@ class RightPanel(GenPanel):
         # list_spec is empty (e.g. during startup).
         names = list(app_state.list_spec.file_name) if len(app_state.list_spec) else list(spec_dict)
 
+        # With 'propagate largest dent' ticked, every non-reference spectrum is
+        # broken at the same widest gap (matching SVD) so the breaks line up and
+        # the overlay stays readable; the reference (first/dark) stays whole.
+        propagate = self._propagate_dent()
+        ref_name = names[0] if names else None
+        global_gap = self._global_gap() if propagate else (float('nan'), float('nan'))
+
         for n, name in enumerate(names):
             if name not in spec_dict:
                 continue
@@ -1010,16 +1195,28 @@ class RightPanel(GenPanel):
             if use_mass_center and name in centroids:
                 label_suffix = ' mass center = ' + format(centroids[name], '.3f')
 
+            if propagate:
+                gap_blue, gap_red = (float('nan'), float('nan')) if name == ref_name else global_gap
+            else:
+                gap_blue, gap_red = _dent_bounds(name)
+            wl_arr = np.array(df.wl)
+            y_arr = np.array(y_values)
+            wl_b, y_b = break_at_gap(wl_arr, y_arr, gap_blue, gap_red)
+            color = rgb_to_hex(palette[n])
+
             if batch:
-                list_toplot.append((np.array(df.wl), np.array(y_values)))
+                # keep the break; slashes are skipped here (>30 overlaid
+                # traces x marks turns to mush).
+                list_toplot.append((wl_b, y_b))
             else:
                 self.plot_panel.oplot(
-                    np.array(df.wl), np.array(y_values),
+                    wl_b, y_b,
                     linewidth=2, style='line', marker=None, markersize=0,
                     label=name + label_suffix,
-                    color=rgb_to_hex(palette[n]),
+                    color=color,
                     ylabel='Absorbance [-]', xlabel='Wavelength [nm]',
                 )
+                self._draw_slashes(wl_arr, y_arr, gap_blue, gap_red, color)
             # Mass-center vline: original code draws this whether or not we
             # are in batch mode (though axvline on plot_many_modified panels
             # does not currently work -- see TODO in oplot branch).
@@ -1049,13 +1246,25 @@ class RightPanel(GenPanel):
 
     def _plot_diff(self):
         """Single difference spectrum (computed on TabOne)."""
+        # A difference spectrum spans the dents of both operands; break across
+        # their union -- or the global widest gap when propagation is on.
+        # sorted_selections is set on TabOne in on_diff_spec.
+        if self._propagate_dent():
+            gap_blue, gap_red = self._global_gap()
+        else:
+            sel = getattr(self._tab1(), 'sorted_selections', None)
+            gap_blue, gap_red = _union_dent(sel) if sel else (float('nan'), float('nan'))
+        wl_arr = np.array(app_state.diffspec.wl)
+        y_arr = np.array(app_state.diffspec.A)
+        wl_b, y_b = break_at_gap(wl_arr, y_arr, gap_blue, gap_red)
         self.plot_panel.oplot(
-            np.array(app_state.diffspec.wl),
-            np.array(app_state.diffspec.A),
+            wl_b, y_b,
             linewidth=2, style='line', marker=None, markersize=0,
             ylabel='Absorbance [-]', xlabel='Wavelength [nm]',
             title='Difference spectrum',
         )
+        # Single trace -> neutral slash colour (no palette index to match).
+        self._draw_slashes(wl_arr, y_arr, gap_blue, gap_red, '#333333')
 
     def _plot_diffserie(self):
         """Series of diff spectra (one per spec vs. reference)."""
@@ -1065,19 +1274,34 @@ class RightPanel(GenPanel):
         palette = sns.color_palette(palette=pal, n_colors=len(app_state.raw_spec))
         batch = len(app_state.diffserie) > 30
         list_toplot = []
+        # Each trace is (spec - reference), so break across the union of both
+        # spectra's dents -- or the global widest gap when propagation is on.
+        # Reference is the first (time-sorted) spectrum.
+        propagate = self._propagate_dent()
+        global_gap = self._global_gap() if propagate else None
+        ref_name = list(app_state.list_spec.file_name)[0] if len(app_state.list_spec) else None
         for i, spec in enumerate(app_state.diffserie):
             df = app_state.diffserie[spec]
+            if propagate:
+                gap_blue, gap_red = global_gap
+            else:
+                gap_blue, gap_red = _union_dent([spec, ref_name] if ref_name else [spec])
+            wl_arr = np.array(df.wl)
+            y_arr = np.array(df.A)
+            wl_b, y_b = break_at_gap(wl_arr, y_arr, gap_blue, gap_red)
+            color = rgb_to_hex(palette[i + 1])
             if batch:
-                list_toplot.append((np.array(df.wl), np.array(df.A)))
+                list_toplot.append((wl_b, y_b))
             else:
                 self.plot_panel.oplot(
-                    np.array(df.wl), np.array(df.A),
+                    wl_b, y_b,
                     linewidth=2, style='line', marker=None, markersize=0,
                     label=spec + '- dark',
                     title='Difference spectra series',
                     xlabel='Wavelength [nm]', ylabel='Absorbance [-]',
-                    color=rgb_to_hex(palette[i + 1]),
+                    color=color,
                 )
+                self._draw_slashes(wl_arr, y_arr, gap_blue, gap_red, color)
         if batch:
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot,
@@ -1147,17 +1371,23 @@ class RightPanel(GenPanel):
         wl_axis = np.array(ref_df.wl[mask][tokeep])
 
         for i in range(min(5, len(app_state.raw_spec) - 1)):
-            y = np.array(scaled[:, i])
+            y = np.asarray(scaled[:, i]).ravel()
+            # The dent region was dropped from wl_axis upstream, so the line
+            # would otherwise interpolate across it -- break on the global gap.
+            wl_b, y_b = break_at_gap(wl_axis, y, laser_blue, laser_red)
+            color = rgb_to_hex(palette[i])
             if batch:
-                list_toplot.append((wl_axis, y))
+                list_toplot.append((wl_b, y_b))
             self.plot_panel.oplot(
-                wl_axis, y,
+                wl_b, y_b,
                 linewidth=2, style='line', marker=None, markersize=0,
                 label='SV n° ' + str(i),
                 title='left Singular Vectors',
                 xlabel='Wavelength [nm]', ylabel='Absorbance [-]',
-                color=rgb_to_hex(palette[i]),
+                color=color,
             )
+            if not batch:
+                self._draw_slashes(wl_axis, y, laser_blue, laser_red, color)
         if batch:
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot, title='left Singular Vectors',
@@ -2497,6 +2727,41 @@ class TabThree(wx.Panel):
         # laser_removal_sizer.Add(laser_removal_button, 2, wx.ALIGN_CENTER | wx.ALL, border = 2)
         # sizer.Add(laser_removal_sizer, 4, wx.EXPAND, | wx.HORIZONTAL, border = 2)
         sizer.Add(self.laser_removal_button, 1, wx.EXPAND | wx.ALL, border=2)
+
+        # Break every non-dark spectrum at the single widest dent (min blue, max
+        # red across all spectra), matching the SVD, so the breaks line up and
+        # the overlay is readable. Off -> each spectrum breaks at its own dent.
+        self.propagate_dent_checkbox = wx.CheckBox(self, label='Propagate largest dent to all spectra ?', style=wx.CHK_2STATE)
+        sizer.Add(self.propagate_dent_checkbox, 1, wx.ALIGN_CENTER | wx.ALL, border=2)
+
+        # Laser-dent interruption marks (the '/' breaks on plots). Width is in
+        # nm, height in absorbance units (AU); both are data-size. Marks are
+        # black unless 'Colour slashes by trace ?' is ticked.
+        self.box_slash = wx.StaticBox(self, label='Laser dent marks')
+        slashboxsizer = wx.StaticBoxSizer(self.box_slash, wx.VERTICAL)
+
+        slashfieldsizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        slashwidthsizer = wx.BoxSizer(wx.VERTICAL)
+        self.slash_width_label = wx.StaticText(self, label='Slash width [nm]', style=wx.ALIGN_CENTER_HORIZONTAL)
+        self.slash_width_field = wx.TextCtrl(self, value=str(SLASH_WIDTH_DEFAULT), style=wx.TE_CENTER)
+        slashwidthsizer.Add(self.slash_width_label, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
+        slashwidthsizer.Add(self.slash_width_field, 1, wx.ALIGN_CENTER | wx.TOP, border=3)
+        slashfieldsizer.Add(slashwidthsizer, 1, wx.ALIGN_CENTER | wx.ALL, border=3)
+
+        slashheightsizer = wx.BoxSizer(wx.VERTICAL)
+        self.slash_height_label = wx.StaticText(self, label='Slash height [AU]', style=wx.ALIGN_CENTER_HORIZONTAL)
+        self.slash_height_field = wx.TextCtrl(self, value=str(SLASH_HEIGHT_DEFAULT), style=wx.TE_CENTER)
+        slashheightsizer.Add(self.slash_height_label, 1, wx.ALIGN_CENTER | wx.BOTTOM, border=0)
+        slashheightsizer.Add(self.slash_height_field, 1, wx.ALIGN_CENTER | wx.TOP, border=3)
+        slashfieldsizer.Add(slashheightsizer, 1, wx.ALIGN_CENTER | wx.ALL, border=3)
+
+        slashboxsizer.Add(slashfieldsizer, 1, wx.EXPAND)
+
+        self.slash_trace_colour_checkbox = wx.CheckBox(self, label='Colour slashes by trace ?', style=wx.CHK_2STATE)
+        slashboxsizer.Add(self.slash_trace_colour_checkbox, 1, wx.ALIGN_CENTER | wx.ALL, border=3)
+
+        sizer.Add(slashboxsizer, 1, wx.EXPAND | wx.ALL, border=2)
 
         self.SetSizer(sizer)
 
