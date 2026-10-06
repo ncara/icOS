@@ -25,6 +25,7 @@ import re
 import tempfile
 import warnings
 from collections import Counter
+from contextlib import contextmanager
 from statistics import mean
 
 warnings.simplefilter("ignore")
@@ -67,10 +68,36 @@ import scipy.optimize  # noqa: F401 -- for sp.optimize.curve_fit
 import seaborn as sns
 import wx
 import wxmplot.interactive as wi
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from matplotlib.colors import LinearSegmentedColormap
 from scipy import signal
 from wxmplot import PlotPanel
+
+
+# --- rendering performance -------------------------------------------------
+# Spectra carry ~2000 points but are drawn into a canvas far narrower than
+# 2000 pixels, so let matplotlib collapse sub-pixel vertices before they reach
+# the renderer. Lossless at screen resolution, and it roughly halves draw time
+# on dense overlays. Only what is rasterised is affected -- never the data.
+mpl.rcParams['path.simplify'] = True
+mpl.rcParams['path.simplify_threshold'] = 1.0    # maximum simplification
+mpl.rcParams['agg.path.chunksize'] = 10000
+
+# Trace-count thresholds deciding how an overlay of spectra is drawn:
+#
+#   <= LEGEND_TRACE_LIMIT      one configurable trace per spectrum, with a
+#                              legend entry and laser-dent slash marks.
+#   <= COLLECTION_TRACE_LIMIT  still one matplotlib line per spectrum, but
+#                              per-trace labels and marks are dropped -- a
+#                              100-entry legend is unreadable, and laying it
+#                              out costs more than drawing the data.
+#   >  COLLECTION_TRACE_LIMIT  the whole overlay collapses into a single
+#                              LineCollection artist. See
+#                              Modified_plot_panel.plot_many_collection.
+LEGEND_TRACE_LIMIT = 30
+COLLECTION_TRACE_LIMIT = 200
 
 
 def rgb_to_hex(rgb):
@@ -88,6 +115,79 @@ def rgb_to_hex(rgb):
     g = int(g * 255)
     b = int(b * 255)
     return '#{0:02x}{1:02x}{2:02x}'.format(r, g, b)
+
+
+@contextmanager
+def suspended_draws(panel):
+    """
+    Suspend canvas redraws while a plot is assembled, then draw exactly once.
+
+    wxmplot >= 0.9.60 forces a full canvas redraw for *every* trace added,
+    regardless of what the caller asks for::
+
+        oplot(..., delay_draw=True)
+          -> conf.refresh_trace(n)
+             -> conf.set_trace_color(c, delay_draw=True)
+                -> conf.set_yaxes_tracecolor(delay_draw=False)   # hardcoded
+                   -> canvas.draw()                              # full redraw
+
+    That ``delay_draw=False`` in ``wxmplot/config.py`` ignores the flag it was
+    given -- it is the only setter in ``refresh_trace()`` that fails to
+    forward it. Adding N traces therefore costs N full redraws of a canvas
+    that already holds up to N traces: quadratic in the number of spectra,
+    which is why an overlay that is instant at 10 spectra takes minutes at
+    100. Introduced in wxmplot 0.9.60 (2024-12-02); 0.9.59 and earlier are
+    unaffected.
+
+    Here ``canvas.draw`` is swapped for a no-op that only records that a draw
+    was wanted; the real one runs once on exit, after limits and legend have
+    settled. Swapping the canvas method rather than patching wxmplot means
+    any *other* forced draw upstream adds later is covered too.
+
+    ``conf.user_limits`` is reset on entry, matching what ``PlotPanel.plot()``
+    does at the start of a fresh plot, so that limits set during one plot
+    build (notably by ``plot_many_collection``) do not leak into the next.
+    """
+    canvas = panel.canvas
+    conf = panel.conf
+    real_draw = canvas.draw
+    show_legend = conf.show_legend
+    wanted = []
+
+    for ax in canvas.figure.get_axes():
+        conf.user_limits[ax] = 4 * [None]
+
+    canvas.draw = lambda *args, **kws: wanted.append(1)
+    conf.show_legend = False    # otherwise re-laid-out once per trace
+    try:
+        yield
+    finally:
+        canvas.draw = real_draw
+        conf.show_legend = show_legend
+        if wanted:
+            if show_legend:
+                conf.draw_legend(delay_draw=True)
+            panel.set_viewlimits()   # skipped along with the per-trace draws
+            real_draw()
+
+
+def _finite_segments(x, y):
+    """
+    Split a NaN-separated polyline into its contiguous finite runs.
+
+    ``break_at_gap`` marks removed (laser-dent) regions with NaN so that
+    matplotlib draws no segment across them. A Line2D handles that natively,
+    but a LineCollection is built from explicit segment arrays, so the runs
+    have to be separated here. Yields (M, 2) float arrays, one per run of at
+    least two finite points; a spectrum with one dent yields two.
+    """
+    good = np.isfinite(x) & np.isfinite(y)
+    if not good.any():
+        return
+    edges = np.flatnonzero(np.diff(good.astype(np.int8))) + 1
+    for chunk in np.split(np.arange(good.size), edges):
+        if good[chunk[0]] and chunk.size > 1:
+            yield np.column_stack((x[chunk], y[chunk]))
 
 
 def break_at_gap(wl, y, gap_blue, gap_red):
@@ -283,6 +383,20 @@ def parse_float(s):
     if not math.isfinite(x):  # reject 'nan', 'inf', etc.
         raise ValueError("non-finite")
     return x
+
+
+def parse_optional_float(value):
+    """
+    Parse a user field that is allowed to be left empty.
+
+    Returns None when the field is blank or whitespace only, the float when
+    it parses, and raises ValueError when it holds something that is not a
+    finite number. Blank is deliberately not an error: for the kinetic fit
+    fields it means "estimate this one from the data".
+    """
+    if not str(value).strip():
+        return None
+    return parse_float(value)
 
 
 def validated_savgol_window(raw_value, polyorder=3, default=21):
@@ -918,11 +1032,15 @@ class Modified_plot_panel(PlotPanel):
             for i in range(nplot_traces, nplot_request+5):
                 conf.init_trace(i,  linecolors[i%ncols], 'dashed')
         palette=[rgb_to_hex(x) for x in sns.color_palette(palette=palin, n_colors=len(datalist))]
-        self.plot(x0, y0, markersize=0, color=palette[0], style='line', fill=False,  **opts)
+        # Do not pass refresh=False here: conf.refresh_trace() is what applies
+        # these colours to the matplotlib lines. See RightPanel._oplot.
+        self.plot(x0, y0, markersize=0, color=palette[0], style='line',
+                  fill=False, **opts)
         i=1
         for dat in datalist[1:]:
             x, y, opts = unpack_tracedata(dat, delay_draw=True)
-            self.oplot(x, y, markersize=0, color=palette[i], style='line', fill=False, **opts)
+            self.oplot(x, y, markersize=0, color=palette[i], style='line',
+                       fill=False, **opts)
             i+=1
 
         self.reset_formats()
@@ -935,70 +1053,120 @@ class Modified_plot_panel(PlotPanel):
         # self.canvas.Refresh()
 
 
-    def plot_quality(self, datalist, title = 'Quality', xlabel='Wavelength', ylabel = 'Absorbance [-]',
-                     I0=None, side='left', zoom_limits=None, show_legend=False, **kws):
+    def plot_many_collection(self, datalist, title=None, palin='Spectral',
+                             xlabel=None, ylabel=None, linewidth=1.5,
+                             show_legend=False):
         """
-        plot many traces at once, taking a list of (x, y) pairs
+        Draw a large set of traces as a *single* matplotlib artist.
+
+        wxmplot keeps a configuration object per trace -- colour, style,
+        legend entry, right-click configurability -- and matplotlib keeps a
+        Line2D. That is exactly what you want for a handful of spectra and
+        pure overhead for several hundred, where the individual traces can no
+        longer be told apart anyway. Above ``COLLECTION_TRACE_LIMIT`` the
+        overlay is therefore collapsed into one LineCollection.
+
+        The first trace is still plotted normally, so the panel's axes,
+        labels and internal bookkeeping are set up exactly as usual and the
+        rest of the toolbox (saving, zooming, the configuration frame) keeps
+        working. The remaining traces live inside the collection and are not
+        individually configurable -- that is the trade for the speed.
+
+        Traces are NaN-separated across removed laser-dent regions; a
+        LineCollection needs those runs as explicit segments, hence
+        ``_finite_segments``.
         """
-        def unpack_tracedata(tdat, **kws):
-            if (isinstance(tdat, dict) and
-                'xdata' in tdat and 'ydata' in tdat):
-                xdata = tdat.pop('xdata')
-                ydata = tdat.pop('ydata')
-                out = kws
-                out.update(tdat)
-            elif isinstance(tdat, (list, tuple)):
-                out = kws
-                xdata = tdat[0]
-                ydata = tdat[1]
-            return (xdata, ydata, out)
+        if not datalist:
+            return
+        palette = [rgb_to_hex(c) for c in
+                   sns.color_palette(palette=palin, n_colors=len(datalist))]
 
+        x0 = np.asarray(datalist[0][0], dtype=float).ravel()
+        y0 = np.asarray(datalist[0][1], dtype=float).ravel()
+        # refresh is left on so wxmplot applies palette[0] to this line --
+        # see RightPanel._oplot for why passing color= is not enough.
+        self.plot(x0, y0, color=palette[0], style='line', marker=None,
+                  markersize=0, linewidth=linewidth, fill=False, title=title,
+                  xlabel=xlabel, ylabel=ylabel, show_legend=show_legend,
+                  delay_draw=True)
 
-        conf = self.conf
-        opts = dict(side=side, title=title, xlabel=xlabel, ylabel=ylabel,
-                    delay_draw=True, show_legend=False)
-        opts.update(kws)
-        # x0, y0 = datalist[0][0], datalist[0][1]
-        x0, y0, opts = unpack_tracedata(datalist[0])#, **opts)
+        segments, seg_colors = [], []
+        xmin, xmax = np.inf, -np.inf
+        ymin, ymax = np.inf, -np.inf
+        for index, ((x, y), colour) in enumerate(zip(datalist, palette)):
+            x = np.asarray(x, dtype=float).ravel()
+            y = np.asarray(y, dtype=float).ravel()
+            finite = np.isfinite(x) & np.isfinite(y)
+            if finite.any():
+                xmin = min(xmin, x[finite].min())
+                xmax = max(xmax, x[finite].max())
+                ymin = min(ymin, y[finite].min())
+                ymax = max(ymax, y[finite].max())
+            if index == 0:
+                continue    # already drawn above as a real trace
+            for seg in _finite_segments(x, y):
+                segments.append(seg)
+                seg_colors.append(colour)
 
-        nplot_traces = len(conf.traces)
-        nplot_request = len(datalist)
-        if nplot_request > nplot_traces:
-            linecolors = conf.linecolors
-            ncols = len(linecolors)
-            for i in range(nplot_traces, nplot_request+5):
-                conf.init_trace(i,  linecolors[i%ncols], 'dashed')
-        # palette = [rgb_to_hex(x) for x in sns.color_palette(palette='Spectral', n_colors=len(datalist))]
+        if segments:
+            collection = LineCollection(segments, colors=seg_colors,
+                                        linewidths=linewidth)
+            collection.set_label('_nolegend_')
+            self.axes.add_collection(collection)
 
-        colors = [[1.0, 0.8, 0.4], [0.4, 1.0, 0.4] ]  # Red to Green
-        cmap = LinearSegmentedColormap.from_list("Custom", colors, N=len(I0))
-
-        normalized_I=np.array((I0-1000)/(10000))
-
-        for i in range(0, len(normalized_I)):
-            if normalized_I[i]>1:
-                normalized_I[i]=1
-            elif normalized_I[i]<0:
-                normalized_I[i]=0
-
-        palette=[rgb_to_hex(x[:3]) for x in cmap(normalized_I)]
-        print(x0,y0)
-        self.plot(x0, y0, marker='o', markersize=4, linewidth=0, color=palette[i], alpha=0.5,  delay_draw=True)
-        i=1
-        for dat in datalist[1:]: #for i in range (1, len(datalist)):
-            # x, y = datalist[i][0], datalist[i][1]
-            x, y, opts = unpack_tracedata(dat, delay_draw=True)
-            self.oplot(x, y, marker='o', markersize=4, linewidth=0, style = 'line', color=palette[i], alpha=0.5, delay_draw=True)
-            i+=1
+        # conf.set_viewlimits() only inspects ax.get_lines(), so the
+        # collection is invisible to it; set the limits from the data we just
+        # measured. suspended_draws() clears user_limits at the start of the
+        # next plot, so these do not leak.
+        if np.isfinite([xmin, xmax, ymin, ymax]).all():
+            pad = 0.02 * (ymax - ymin) or 0.01
+            self.set_xylims((xmin, xmax, ymin - pad, ymax + pad))
 
         self.reset_formats()
-        self.set_zoomlimits(zoom_limits)
-        self.conf.show_legend = show_legend
-        if show_legend:
-            conf.draw_legend(delay_draw=True)
-        conf.relabel(delay_draw=True)
+        self.conf.relabel(delay_draw=True)
         self.draw()
-        # self.canvas.Refresh()
+
+    def plot_quality(self, wl, absorbance, I0, title='Quality',
+                     xlabel='Wavelength [nm]', ylabel='Absorbance [-]'):
+        """
+        Per-pixel confidence plot: absorbance coloured by the lamp reference
+        count I0, from amber (low photon count, untrustworthy) to green.
+
+        This used to issue one plot call per *data point* -- several thousand
+        traces for a single spectrum -- which was both unusably slow and
+        buggy (the colour index for the first point came from a leftover loop
+        variable). One scatter with a per-point colour array draws the same
+        picture as a single artist.
+
+        An invisible line carrying the same data is plotted first so that
+        wxmplot's own axis, label and limit machinery sees the data range;
+        the scatter itself sits outside that bookkeeping.
+        """
+        wl = np.asarray(wl, dtype=float).ravel()
+        absorbance = np.asarray(absorbance, dtype=float).ravel()
+        I0 = np.asarray(I0, dtype=float).ravel()
+        if wl.size == 0:
+            return
+
+        # refresh is left on: alpha=0.0 is only applied to the artist by
+        # conf.refresh_trace(), so without it this guide line stays visible.
+        self.plot(wl, absorbance, marker=None, markersize=0, linewidth=0,
+                  style='line', alpha=0.0, title=title, xlabel=xlabel,
+                  ylabel=ylabel, show_legend=False, delay_draw=True)
+
+        cmap = LinearSegmentedColormap.from_list(
+            "Custom", [[1.0, 0.8, 0.4], [0.4, 1.0, 0.4]], N=max(2, I0.size))
+        # Reference counts below 1000 are treated as worthless and above
+        # 11000 as fully trustworthy; everything between scales linearly.
+        normalized_I = np.clip((I0 - 1000) / 10000.0, 0.0, 1.0)
+        normalized_I = np.nan_to_num(normalized_I, nan=0.0)
+
+        self.axes.scatter(wl, absorbance, c=cmap(normalized_I), s=16,
+                          alpha=0.5, linewidths=0)
+
+        self.reset_formats()
+        self.conf.relabel(delay_draw=True)
+        self.draw()
 
 
 class RightPanel(GenPanel):
@@ -1008,9 +1176,51 @@ class RightPanel(GenPanel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.plot_panel, proportion = 1, flag = wx.EXPAND)
         self.SetSizer(sizer)
+        # Slash width/height read from the Expert Settings fields once per
+        # plot build rather than once per spectrum; reset in plot_data().
+        self._slash_size_cache = None
 
-#TODO change the plotting option to add a way to change the plot function to plot-many when there are more than 100 curves
     # --- small helpers -----------------------------------------------------
+
+    def _oplot(self, x, y, **kws):
+        """
+        ``oplot`` with the per-trace limit recalculation switched off. Every
+        plotting path in this panel goes through here.
+
+        ``delay_draw=True`` skips wxmplot's per-trace ``set_viewlimits()``,
+        which walks every line on the axes and takes min/max of each -- also
+        quadratic in the number of spectra. Limits and the single real draw
+        are handled on exit from :func:`suspended_draws` in ``plot_data``.
+
+        ``refresh`` is deliberately left at its default of True. It is
+        tempting to switch off (it is ten property setters per trace, one of
+        which drags in the forced redraw described in
+        :func:`suspended_draws`) but wxmplot applies colour, style,
+        linewidth, marker and markersize to the matplotlib artist *inside*
+        ``conf.refresh_trace()``, after the line has been created. The
+        ``color=`` passed here is only recorded in ``conf.traces[n]``
+        beforehand, while ``conf.lines[n]`` is still None, and the
+        ``axes.plot()`` call that creates the line passes no colour at all.
+        Turning refresh off therefore drops every trace back to matplotlib's
+        default C0-C9 cycle and discards the Spectral palette. The forced
+        redraw it triggers is already neutralised by
+        :func:`suspended_draws`, so there was nothing to gain anyway.
+        """
+        kws.setdefault('delay_draw', True)
+        return self.plot_panel.oplot(x, y, **kws)
+
+    @staticmethod
+    def _draw_mode(ntraces):
+        """
+        Pick a drawing strategy for an overlay of ``ntraces`` spectra:
+        'individual' (labels + slash marks), 'many' (one line each, no
+        decoration) or 'collection' (a single LineCollection artist).
+        """
+        if ntraces <= LEGEND_TRACE_LIMIT:
+            return 'individual'
+        if ntraces <= COLLECTION_TRACE_LIMIT:
+            return 'many'
+        return 'collection'
 
     def _get_palette(self):
         """Return the seaborn palette name based on the user's blue↔red toggle."""
@@ -1064,33 +1274,59 @@ class RightPanel(GenPanel):
             return ' peak max = N/A'
         return ' peak max = ' + format(windowed.A.idxmax(), '.2f')
 
-    def _draw_slashes(self, wl, y, gap_blue, gap_red, color):
+    def _collect_slashes(self, store, wl, y, gap_blue, gap_red, color):
         """
-        Overlay diagonal '/' interruption marks at the edges of a removed
-        (laser-dent) region. ``wl``/``y`` should be the *pre-break* arrays so
-        the marks sit at the true edge absorbances. Mark size comes from the
-        Expert Settings fields (width in nm, height in AU). Marks are black
-        unless 'Colour slashes by trace ?' is ticked, in which case the trace
-        colour (``color``) is used. No-op when there is no dent or no surviving
-        edge.
+        Accumulate the diagonal '/' interruption marks for one spectrum
+        instead of drawing them immediately.
+
+        ``wl``/``y`` should be the *pre-break* arrays so the marks sit at the
+        true edge absorbances. Marks are black unless 'Colour slashes by
+        trace ?' is ticked, in which case the trace colour is used, so they
+        are grouped by colour: all the black ones become a single artist
+        rather than one per spectrum. No-op when there is no dent or no
+        surviving edge.
         """
         width, height = self._slash_size()
         xs, ys = slash_marks(wl, y, gap_blue, gap_red, width, height)
         if xs is None:
             return
-        slash_colour = color if self._slash_use_trace_colour() else 'black'
-        self.plot_panel.oplot(
-            xs, ys,
-            linewidth=SLASH_THICKNESS, style='line', marker=None, markersize=0,
-            color=slash_colour,
-        )
+        key = color if self._slash_use_trace_colour() else 'black'
+        store.setdefault(key, ([], []))
+        store[key][0].append(xs)
+        store[key][1].append(ys)
+
+    def _flush_slashes(self, store):
+        """
+        Draw the marks gathered by ``_collect_slashes``, one trace per colour.
+
+        ``slash_marks`` already returns NaN-separated polylines, so the marks
+        for many spectra concatenate into one array without joining up.
+        """
+        for colour, (xs_list, ys_list) in store.items():
+            self._oplot(
+                np.concatenate(xs_list), np.concatenate(ys_list),
+                linewidth=SLASH_THICKNESS, style='line', marker=None,
+                markersize=0, color=colour,
+            )
+
+    def _draw_slashes(self, wl, y, gap_blue, gap_red, color):
+        """Collect and immediately draw the marks for a single trace."""
+        store = {}
+        self._collect_slashes(store, wl, y, gap_blue, gap_red, color)
+        self._flush_slashes(store)
 
     def _slash_size(self):
         """
-        Read slash width (nm) / height (AU) from the Expert Settings fields,
+        Slash width (nm) / height (AU) from the Expert Settings fields,
         falling back to the module defaults on blank or invalid input. Only
         positive finite values are accepted.
+
+        Cached for the duration of one plot build (``plot_data`` clears the
+        cache) so the wx fields are read once, not once per spectrum.
         """
+        if self._slash_size_cache is not None:
+            return self._slash_size_cache
+
         tab3 = self._tab3()
 
         def _read(field, default):
@@ -1100,10 +1336,11 @@ class RightPanel(GenPanel):
                 return default
             return value if value > 0 else default
 
-        return (
+        self._slash_size_cache = (
             _read(tab3.slash_width_field, SLASH_WIDTH_DEFAULT),
             _read(tab3.slash_height_field, SLASH_HEIGHT_DEFAULT),
         )
+        return self._slash_size_cache
 
     def _slash_use_trace_colour(self):
         """True when 'Colour slashes by trace ?' is ticked; otherwise the
@@ -1116,9 +1353,11 @@ class RightPanel(GenPanel):
         """
         Central plot dispatcher. Maps ``typecorr`` to a small handler method
         that knows how to render that view. Unknown typecorr -> no-op.
-        """
-        self.plot_panel.clear()
 
+        The whole build runs inside :func:`suspended_draws`, so the canvas is
+        rasterised exactly once no matter how many traces the handler adds,
+        and inside Freeze/Thaw so wx does not repaint the panel mid-build.
+        """
         handlers = {
             'raw':          lambda: self._plot_spec_series(app_state.raw_spec, scaling_top, apply_display_scaling=True),
             'const':        lambda: self._plot_spec_series(app_state.const_spec, scaling_top, apply_display_scaling=False),
@@ -1135,7 +1374,15 @@ class RightPanel(GenPanel):
         if handler is None:
             print(f"plot_data: unknown typecorr '{typecorr}'")
             return
-        handler()
+
+        self._slash_size_cache = None
+        self.plot_panel.Freeze()
+        try:
+            with suspended_draws(self.plot_panel):
+                self.plot_panel.clear()
+                handler()
+        finally:
+            self.plot_panel.Thaw()
 
     # --- handlers: raw / const / ready (consolidated) ----------------------
 
@@ -1143,7 +1390,8 @@ class RightPanel(GenPanel):
         """
         Plot a dict of spectra (raw / const / ready) with the user's current
         options applied: mass-center overlay, blue↔red palette direction, and
-        batch-mode when >30 spectra.
+        one of three drawing strategies depending on how many spectra are on
+        screen (see ``_draw_mode``).
 
         ``apply_display_scaling`` is True only for the 'raw' stage, because
         'const' and 'ready' spectra are normalized in-place at correction
@@ -1162,12 +1410,14 @@ class RightPanel(GenPanel):
         use_mass_center = tab1.mass_center_checkbox.GetValue()
         use_scaling = tab1.scaling_checkbox.GetValue()
         centroids = tab1.mass_center(typecorr=self._typecorr_from_dict(spec_dict)) if use_mass_center else {}
-        batch = len(spec_dict) > 30
-        list_toplot = []
 
         # Always iterate by time-sorted order; fall back to dict order if
-        # list_spec is empty (e.g. during startup).
+        # list_spec is empty (e.g. during startup). Names absent from this
+        # stage's dict are dropped up front so the palette index stays in
+        # step with the traces actually drawn.
         names = list(app_state.list_spec.file_name) if len(app_state.list_spec) else list(spec_dict)
+        names = [name for name in names if name in spec_dict]
+        mode = self._draw_mode(len(names))
 
         # With 'propagate largest dent' ticked, every non-reference spectrum is
         # broken at the same widest gap (matching SVD) so the breaks line up and
@@ -1176,9 +1426,11 @@ class RightPanel(GenPanel):
         ref_name = names[0] if names else None
         global_gap = self._global_gap() if propagate else (float('nan'), float('nan'))
 
+        list_toplot = []
+        slashes = {}
+        vlines = []
+
         for n, name in enumerate(names):
-            if name not in spec_dict:
-                continue
             df = spec_dict[name]
 
             if use_scaling and apply_display_scaling:
@@ -1204,31 +1456,41 @@ class RightPanel(GenPanel):
             wl_b, y_b = break_at_gap(wl_arr, y_arr, gap_blue, gap_red)
             color = rgb_to_hex(palette[n])
 
-            if batch:
-                # keep the break; slashes are skipped here (>30 overlaid
-                # traces x marks turns to mush).
-                list_toplot.append((wl_b, y_b))
-            else:
-                self.plot_panel.oplot(
+            if mode == 'individual':
+                self._oplot(
                     wl_b, y_b,
                     linewidth=2, style='line', marker=None, markersize=0,
                     label=name + label_suffix,
                     color=color,
                     ylabel='Absorbance [-]', xlabel='Wavelength [nm]',
                 )
-                self._draw_slashes(wl_arr, y_arr, gap_blue, gap_red, color)
-            # Mass-center vline: original code draws this whether or not we
-            # are in batch mode (though axvline on plot_many_modified panels
-            # does not currently work -- see TODO in oplot branch).
-            if use_mass_center and name in centroids:
-                #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
-                self.plot_panel.axvline(centroids[name], color=palette[n], ls='-.')
+                # Keep the break; the marks are dropped in the batch modes,
+                # where hundreds of overlaid traces x marks turns to mush.
+                self._collect_slashes(slashes, wl_arr, y_arr,
+                                      gap_blue, gap_red, color)
+            else:
+                list_toplot.append((wl_b, y_b))
 
-        if batch:
+            if use_mass_center and name in centroids:
+                vlines.append((centroids[name], palette[n]))
+
+        # Both batch draws open with plot(), which clears the panel, so they
+        # have to run before anything that is overlaid on top of them.
+        if mode == 'many':
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot,
                 ylabel='Absorbance [-]', xlabel='Wavelength [nm]', palin=pal,
             )
+        elif mode == 'collection':
+            self.plot_panel.plot_many_collection(
+                datalist=list_toplot,
+                ylabel='Absorbance [-]', xlabel='Wavelength [nm]', palin=pal,
+            )
+
+        self._flush_slashes(slashes)
+        for position, colour in vlines:
+            #TODO fix the plotting of centroids by finding some analog of axvline with wxmplot
+            self.plot_panel.axvline(position, color=colour, ls='-.')
 
     @staticmethod
     def _typecorr_from_dict(spec_dict):
@@ -1257,7 +1519,7 @@ class RightPanel(GenPanel):
         wl_arr = np.array(app_state.diffspec.wl)
         y_arr = np.array(app_state.diffspec.A)
         wl_b, y_b = break_at_gap(wl_arr, y_arr, gap_blue, gap_red)
-        self.plot_panel.oplot(
+        self._oplot(
             wl_b, y_b,
             linewidth=2, style='line', marker=None, markersize=0,
             ylabel='Absorbance [-]', xlabel='Wavelength [nm]',
@@ -1272,8 +1534,9 @@ class RightPanel(GenPanel):
             return
         pal = self._get_palette()
         palette = sns.color_palette(palette=pal, n_colors=len(app_state.raw_spec))
-        batch = len(app_state.diffserie) > 30
+        mode = self._draw_mode(len(app_state.diffserie))
         list_toplot = []
+        slashes = {}
         # Each trace is (spec - reference), so break across the union of both
         # spectra's dents -- or the global widest gap when propagation is on.
         # Reference is the first (time-sorted) spectrum.
@@ -1290,10 +1553,8 @@ class RightPanel(GenPanel):
             y_arr = np.array(df.A)
             wl_b, y_b = break_at_gap(wl_arr, y_arr, gap_blue, gap_red)
             color = rgb_to_hex(palette[i + 1])
-            if batch:
-                list_toplot.append((wl_b, y_b))
-            else:
-                self.plot_panel.oplot(
+            if mode == 'individual':
+                self._oplot(
                     wl_b, y_b,
                     linewidth=2, style='line', marker=None, markersize=0,
                     label=spec + '- dark',
@@ -1301,13 +1562,23 @@ class RightPanel(GenPanel):
                     xlabel='Wavelength [nm]', ylabel='Absorbance [-]',
                     color=color,
                 )
-                self._draw_slashes(wl_arr, y_arr, gap_blue, gap_red, color)
-        if batch:
+                self._collect_slashes(slashes, wl_arr, y_arr,
+                                      gap_blue, gap_red, color)
+            else:
+                list_toplot.append((wl_b, y_b))
+        if mode == 'many':
             self.plot_panel.plot_many_modified(
                 datalist=list_toplot,
                 title='Difference spectra series',
                 xlabel='Wavelength [nm]', ylabel='Absorbance [-]', palin=pal,
             )
+        elif mode == 'collection':
+            self.plot_panel.plot_many_collection(
+                datalist=list_toplot,
+                title='Difference spectra series',
+                xlabel='Wavelength [nm]', ylabel='Absorbance [-]', palin=pal,
+            )
+        self._flush_slashes(slashes)
 
     # --- handlers: kinetics ------------------------------------------------
 
@@ -1318,7 +1589,7 @@ class RightPanel(GenPanel):
         print('trying to print the time-trace at ' + wavelength + 'nm')
         startfit = float(tab2.field_kinetic_start.GetValue())
         dose = float(tab2.abcisse_field.GetValue())
-        self.plot_panel.oplot(
+        self._oplot(
             (np.array(app_state.list_spec.time_code) - startfit) * dose,
             np.array(app_state.list_spec.Abs),
             marker='o', markersize=4, color='blue', linewidth=0,
@@ -1333,7 +1604,7 @@ class RightPanel(GenPanel):
         print('trying to print the kinetic fit at ' + wavelength + 'nm')
         startfit = float(tab2.field_kinetic_start.GetValue())
         dose = float(tab2.abcisse_field.GetValue())
-        self.plot_panel.oplot(
+        self._oplot(
             (np.array(app_state.list_spec.time_code) - startfit) * dose,
             np.array(app_state.list_spec.Abs),
             color='blue',
@@ -1341,7 +1612,7 @@ class RightPanel(GenPanel):
             ylabel='Absorbance [-]', xlabel='Time [s]',
             label='abs at ' + wavelength, legend_on=True,
         )
-        self.plot_panel.oplot(
+        self._oplot(
             np.array(tab2.model.x), np.array(tab2.model.y),
             linewidth=4, alpha=0.5, style='line', marker=None, markersize=0,
             label='modelled kinetic with tau=' + format(tab2.para_kin_fit[-1], '.3f'),
@@ -1365,20 +1636,20 @@ class RightPanel(GenPanel):
         ]
         n_plot = min(5, len(app_state.raw_spec))
         palette = sns.color_palette(palette=pal, n_colors=n_plot)
-        batch = len(app_state.raw_spec) > 30
-        list_toplot = []
         scaled = self._tab2().scaled_spec_lSV
         wl_axis = np.array(ref_df.wl[mask][tokeep])
+        slashes = {}
 
+        # At most five singular vectors are ever drawn, so there is no batch
+        # mode here. (The previous version both collected *and* plotted each
+        # vector above 30 spectra, drawing every one of them twice.)
         for i in range(min(5, len(app_state.raw_spec) - 1)):
             y = np.asarray(scaled[:, i]).ravel()
             # The dent region was dropped from wl_axis upstream, so the line
             # would otherwise interpolate across it -- break on the global gap.
             wl_b, y_b = break_at_gap(wl_axis, y, laser_blue, laser_red)
             color = rgb_to_hex(palette[i])
-            if batch:
-                list_toplot.append((wl_b, y_b))
-            self.plot_panel.oplot(
+            self._oplot(
                 wl_b, y_b,
                 linewidth=2, style='line', marker=None, markersize=0,
                 label='SV n° ' + str(i),
@@ -1386,32 +1657,32 @@ class RightPanel(GenPanel):
                 xlabel='Wavelength [nm]', ylabel='Absorbance [-]',
                 color=color,
             )
-            if not batch:
-                self._draw_slashes(wl_axis, y, laser_blue, laser_red, color)
-        if batch:
-            self.plot_panel.plot_many_modified(
-                datalist=list_toplot, title='left Singular Vectors',
-                xlabel='Wavelength [nm]', ylabel='Absorbance [-]', palin=pal,
-            )
+            self._collect_slashes(slashes, wl_axis, y,
+                                  laser_blue, laser_red, color)
+        self._flush_slashes(slashes)
 
     def _plot_quality(self):
         """
         Per-pixel quality plot for a single chosen spectrum, coloured by
         lamp intensity I0.
+
+        The lamp table and the spectrum are aligned on wavelength rather than
+        zipped positionally, so the colours stay correct after laser-dent
+        removal has dropped points from ``raw_spec``.
         """
-        #TODO introduce a fix for this plot by creating a custom plotting
-        # function with a color list as one of the intakes
         chosen = self.GetParent().left_panel.tab3.selection
         print('plotting quality')
-        list_toplot = []
-        for i in app_state.raw_lamp[chosen].index:
-            list_toplot.append((
-                np.array([app_state.raw_spec[chosen].wl[i]]),
-                np.array([app_state.raw_spec[chosen].A[i]]),
-            ))
+        spec = app_state.raw_spec[chosen]
+        lamp = app_state.raw_lamp[chosen]
+        common = spec.index.intersection(lamp.index)
+        if len(common) == 0:
+            print(f"quality plot: no shared wavelengths for '{chosen}'")
+            return
         self.plot_panel.plot_quality(
-            datalist=list_toplot,
-            I0=np.array(app_state.raw_lamp[chosen].I0),
+            wl=np.array(spec.wl.loc[common]),
+            absorbance=np.array(spec.A.loc[common]),
+            I0=np.array(lamp.I0.loc[common]),
+            title='Quality of ' + str(chosen),
         )
 
 
@@ -2353,9 +2624,16 @@ class TabTwo(wx.Panel):
         sizer.Add(self.button_SVD, 1, wx.EXPAND | wx.ALL, border = 2)
         kin_par_sizer=wx.BoxSizer(wx.HORIZONTAL)
 
+        # These three fields feed the kinetic models differently, so each
+        # carries a tooltip spelling out what it does where. Leaving one blank
+        # is always valid and means 'estimate it'.
         kin_const_sizer=wx.BoxSizer(wx.VERTICAL)
         self.label_kinetic_constant = wx.StaticText(self, label = 'constant', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_constant = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.field_kinetic_constant.SetToolTip(
+            'a in a + b*exp(-t/tau): the plateau the trace settles to.\n'
+            'Monoexponential: starting guess, blank = estimate from the data.\n'
+            'Strict monoexponential: fixed value, required.')
         kin_const_sizer.Add(self.label_kinetic_constant, 1, wx.CENTER)
         kin_const_sizer.Add(self.field_kinetic_constant, 1, wx.CENTER)
         kin_par_sizer.Add(kin_const_sizer, 1, wx.CENTER)
@@ -2363,6 +2641,10 @@ class TabTwo(wx.Panel):
         kin_scal_sizer=wx.BoxSizer(wx.VERTICAL)
         self.label_kinetic_scalar = wx.StaticText(self, label = 'scalar', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_scalar = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.field_kinetic_scalar.SetToolTip(
+            'b in a + b*exp(-t/tau): the amplitude, negative for a rise.\n'
+            'Monoexponential: starting guess, blank = estimate from the data.\n'
+            'Strict monoexponential: fixed amplitude; blank = fit it.')
         kin_scal_sizer.Add(self.label_kinetic_scalar, 1, wx.CENTER)
         kin_scal_sizer.Add(self.field_kinetic_scalar, 1, wx.CENTER)
         kin_par_sizer.Add(kin_scal_sizer, 1, wx.CENTER)
@@ -2371,6 +2653,10 @@ class TabTwo(wx.Panel):
         kin_rate_sizer=wx.BoxSizer(wx.VERTICAL)
         self.label_kinetic_rate = wx.StaticText(self, label = 'Rate', style = wx.ALIGN_CENTER_HORIZONTAL)
         self.field_kinetic_rate = wx.TextCtrl(self, style = wx.TE_CENTER)
+        self.field_kinetic_rate.SetToolTip(
+            'tau in a + b*exp(-t/tau): the lifetime, in abscissa units --\n'
+            'not a rate constant, despite the label. Always a starting\n'
+            'guess; blank = the middle of the fitted range.')
         kin_rate_sizer.Add(self.label_kinetic_rate, 1, wx.CENTER)
         kin_rate_sizer.Add(self.field_kinetic_rate, 1, wx.CENTER)
         kin_par_sizer.Add(kin_rate_sizer, 1, wx.CENTER)
@@ -2432,22 +2718,93 @@ class TabTwo(wx.Panel):
         print(app_state.list_spec)
         self.update_right_panel('time-trace')
 
+    def _flag_bad_field(self, field,
+                        message="Please enter a valid number (e.g., 12.3 or 12,3)."):
+        """Highlight an input field the user needs to correct, and say why."""
+        field.SetBackgroundColour("pink")
+        field.SetFocus()
+        field.Refresh()
+        wx.MessageBox(message, "Invalid input", wx.OK | wx.ICON_ERROR)
+
+    def _clear_field_flags(self, *fields):
+        """Undo the highlighting from a previous failed attempt."""
+        for field in fields:
+            field.SetBackgroundColour(wx.NullColour)
+            field.Refresh()
+
+    def _monoexp_p0(self, x, y):
+        """
+        Build the ``p0`` starting point for ``fct_monoexp`` (a + b*exp(-x/tau)).
+
+        The three kinetic fields map one-to-one onto the parameters:
+
+          'constant' -> a    the plateau the trace settles to
+          'scalar'   -> b    the amplitude (negative for a rise)
+          'Rate'     -> tau  the lifetime, in abscissa units
+
+        Any field left blank is estimated from the data instead, so a single
+        field can be used to pin down just the parameter the fit is
+        struggling with rather than having to supply all three. The estimates
+        are the ones the previous code printed but never used: the last point
+        for the plateau, the drop from first to last for the amplitude, and
+        the middle of the fitted range for tau.
+
+        Returns the three-element list, or None -- after flagging the
+        offending field -- when a non-empty field holds no usable number.
+        """
+        a_default = float(y[-1])
+        b_default = float(y[0] - y[-1])
+        tau_default = float(x[len(x) // 2])
+        if not np.isfinite(tau_default) or tau_default <= 0:
+            span = float(np.nanmax(x) - np.nanmin(x))
+            tau_default = span / 2.0 if span > 0 else 1.0
+
+        p0 = []
+        supplied = []
+        for name, field, default in (
+            ('a (constant)', self.field_kinetic_constant, a_default),
+            ('b (scalar)', self.field_kinetic_scalar, b_default),
+            ('tau (rate)', self.field_kinetic_rate, tau_default),
+        ):
+            try:
+                value = parse_optional_float(field.GetValue())
+            except (ValueError, TypeError):
+                self._flag_bad_field(field)
+                return None
+            if value is None:
+                p0.append(default)
+            else:
+                p0.append(value)
+                supplied.append(f'{name}={value:g}')
+
+        if p0[2] == 0:
+            self._flag_bad_field(
+                self.field_kinetic_rate,
+                "tau must not be zero: the model divides the abscissa by it.",
+            )
+            return None
+
+        if supplied:
+            print('kinetic fit: start values from the fields -> '
+                  + ', '.join(supplied))
+        else:
+            print('kinetic fit: no start values given, estimating from the data')
+        print(f'kinetic fit: p0 = {p0}')
+        return p0
+
     def on_kinetic_fit(self,event):
         # file_chooser = FileChooser(self, "Which model do you want to fit", 1, ['Monoexponential', 'Hill equation'])
         # if file_chooser.ShowModal() == wx.ID_OK:
         #     self.kin_model_type=file_chooser.check_list_box.GetCheckedStrings()[0]
         #     print(self.kin_model_type)
+        self._clear_field_flags(self.field_kinetic_constant,
+                                self.field_kinetic_scalar,
+                                self.field_kinetic_rate)
         startfit = float(self.field_kinetic_start.GetValue())
         endfit = float(self.field_kinetic_end.GetValue())
-        # p0=[float(self.field_kinetic_constant.GetValue()),float(self.field_kinetic_scalar.GetValue()),float(self.field_kinetic_rate.GetValue())]
-
-
-        # print('this is the intial value of the rate: ',str(p0))
-        # rate0 = float(self.field_kinetic_rate.GetValue())
         x=(np.array(app_state.list_spec.time_code[app_state.list_spec.time_code.between(startfit,endfit)]) -startfit) * float(self.abcisse_field.GetValue()) #TODO fix that
         y=np.array(app_state.list_spec.Abs[app_state.list_spec.time_code.between(startfit,endfit)])
         # print(x,y)
-        #TODO decide whether we should add initial parameters to the fit or not.
 
         self.model = pd.DataFrame(columns=['x','y'])
         # if self.logscale_checkbox.GetValue():
@@ -2461,36 +2818,79 @@ class TabTwo(wx.Panel):
 
         if self.kin_model_type == 'Monoexponential':
             sigma = np.array(len(x)*[1])
-            print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
-            self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp, x,y, sigma = sigma)
+            # The three kinetic fields are starting guesses here -- any left
+            # blank are estimated from the data. See _monoexp_p0.
+            p0 = self._monoexp_p0(x, y)
+            if p0 is None:
+                return
+            try:
+                self.para_kin_fit, pcov = sp.optimize.curve_fit(
+                    fct_monoexp, x, y, p0=p0, sigma=sigma)
+            except RuntimeError as exc:
+                wx.MessageBox(
+                    'The monoexponential fit did not converge from these '
+                    'starting values:\n\n' + str(exc) + '\n\nTry adjusting '
+                    'the constant / scalar / rate fields, or clear them to '
+                    'let the toolbox estimate them.',
+                    'Fit did not converge', wx.OK | wx.ICON_ERROR)
+                return
             self.model.y = fct_monoexp(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Strict Monoexponential':
+            # Careful: here 'constant' and 'scalar' are FIXED values, not
+            # starting guesses -- the plateau the curve rises from and,
+            # optionally, its total amplitude. Only 'Rate' is a starting
+            # guess, as tau is fitted in both variants.
             try:
                 strict_constant = parse_float(self.field_kinetic_constant.GetValue())
-                sigma = np.array(len(x)*[1])
-                print([y[-1], y[0]-y[-1], -1/x[int(len(x)/2)]])
-                print(f"strict y startpoint of {strict_constant} used")
-                try:
-                    strict_scalar=parse_float(self.field_kinetic_scalar.GetValue())
-                    print(f"strict y endpoint of {strict_scalar} used")
-                    def fct_monoexp_strict(x,tau):
-                        return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
-                except :
-                    def fct_monoexp_strict(x,b,tau):
-                        return(strict_constant + b*(1-np.exp(-x/tau)))
-                self.para_kin_fit, pcov = sp.optimize.curve_fit(fct_monoexp_strict, x,y, sigma = sigma)
-                self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
-            except Exception:
-                # Mark invalid and notify
-                self.field_kinetic_constant.SetBackgroundColour("pink")
-                self.field_kinetic_constant.SetFocus()
-                self.field_kinetic_constant.Refresh()
-                wx.MessageBox(
-                    "Please enter a valid number (e.g., 12.3 or 12,3).",
-                    "Invalid input",
-                    wx.OK | wx.ICON_ERROR,
-                )
+            except (ValueError, TypeError):
+                self._flag_bad_field(
+                    self.field_kinetic_constant,
+                    "The strict monoexponential needs a fixed start value "
+                    "in 'constant' (e.g., 12.3 or 12,3).")
                 return
+            try:
+                strict_scalar = parse_optional_float(self.field_kinetic_scalar.GetValue())
+            except (ValueError, TypeError):
+                self._flag_bad_field(self.field_kinetic_scalar)
+                return
+            try:
+                tau0 = parse_optional_float(self.field_kinetic_rate.GetValue())
+            except (ValueError, TypeError):
+                self._flag_bad_field(self.field_kinetic_rate)
+                return
+            if tau0 == 0:
+                self._flag_bad_field(
+                    self.field_kinetic_rate,
+                    "tau must not be zero: the model divides the abscissa by it.")
+                return
+            if tau0 is None:
+                tau0 = float(x[len(x) // 2])
+                if not np.isfinite(tau0) or tau0 <= 0:
+                    span = float(np.nanmax(x) - np.nanmin(x))
+                    tau0 = span / 2.0 if span > 0 else 1.0
+
+            sigma = np.array(len(x)*[1])
+            print(f"strict y startpoint of {strict_constant} used")
+            if strict_scalar is not None:
+                print(f"strict y endpoint of {strict_scalar} used")
+                def fct_monoexp_strict(x, tau):
+                    return(strict_constant + strict_scalar*(1-np.exp(-x/tau)))
+                p0 = [tau0]
+            else:
+                def fct_monoexp_strict(x, b, tau):
+                    return(strict_constant + b*(1-np.exp(-x/tau)))
+                p0 = [float(y[-1] - strict_constant), tau0]
+            print(f'kinetic fit: p0 = {p0}')
+            try:
+                self.para_kin_fit, pcov = sp.optimize.curve_fit(
+                    fct_monoexp_strict, x, y, p0=p0, sigma=sigma)
+            except RuntimeError as exc:
+                wx.MessageBox(
+                    'The strict monoexponential fit did not converge from '
+                    'these starting values:\n\n' + str(exc),
+                    'Fit did not converge', wx.OK | wx.ICON_ERROR)
+                return
+            self.model.y = fct_monoexp_strict(np.linspace(x.min(), x.max(), 1000), *self.para_kin_fit)
         elif self.kin_model_type == 'Hill equation':
             sigma = np.array(len(x)*[1])
             # p0=[y[0], y.max(), x.max()/2 ,-1/x.max()]
